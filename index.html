@@ -336,7 +336,7 @@
 <footer>
   <div class="wrap foot-in">
     <div>Forkable — a marketplace for tools that already work.</div>
-    <div style="font-family:var(--mono)">Validation build · not yet accepting payments</div>
+    <div style="font-family:var(--mono)" id="build-note"></div>
   </div>
 </footer>
 
@@ -472,6 +472,11 @@
     LISTINGS = real;
     paintGrid();
   });
+
+  /* Don't hardcode a claim that goes stale the moment the backend is wired up. */
+  $('build-note').textContent = (window.DB && window.DB.mode === 'supabase')
+    ? 'Live catalog'
+    : 'Validation build · not yet accepting payments';
 
   /* ---------- modal ---------- */
   var modal = $('modal'), frame = $('m-frame'), lastFocus = null;

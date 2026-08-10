@@ -201,6 +201,13 @@ your first real sale, not after.
 ### Tests
 
 ```bash
+./scripts/test.sh
+```
+
+Runs both suites plus a syntax check over every JS file, including the landing page's
+inline script. No Supabase or Stripe account needed. Individually:
+
+```bash
 node functions/_shared/stripe.test.mjs
 ```
 
