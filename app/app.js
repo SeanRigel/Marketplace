@@ -35,6 +35,50 @@
     return (tags || []).map(function (t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('');
   }
 
+  /* Stable hue per listing so generated covers look designed, not random. */
+  function hue(seed) {
+    var h = 0, s = String(seed || '');
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+    return h;
+  }
+
+  function monogram(title) {
+    // Only letters/digits start a word, or "RECONSOLE — OSINT" renders as "R—".
+    var w = String(title || '?').split(/[^A-Za-z0-9]+/).filter(Boolean);
+    if (!w.length) return '?';
+    return (w.length === 1 ? w[0].slice(0, 2) : w[0][0] + w[1][0]).toUpperCase();
+  }
+
+  function avatarFor(name, cls) {
+    return '<span class="avatar ' + (cls || '') + '">' +
+      esc(String(name || '?').trim().charAt(0).toUpperCase() || '?') + '</span>';
+  }
+
+  /* One product tile, used by browse, seller profiles and related tools. */
+  function listingCard(l) {
+    return '<a class="card" href="#/listing/' + esc(l.id) + '">' +
+      '<div class="cover" style="--h:' + hue(l.id) + '">' +
+        (l.demo_url
+          ? (l.demo_status === 'error'
+              ? '<span class="badge badge-danger cover-badge">Demo down</span>'
+              : '<span class="badge badge-live cover-badge"><span class="dot"></span>Live demo</span>')
+          : '') +
+        '<span class="monogram">' + esc(monogram(l.title)) + '</span>' +
+        '<span class="cover-cat">' + esc(CATEGORY_LABELS[l.category] || l.category) + '</span>' +
+      '</div>' +
+      '<div class="card-body">' +
+        '<h3>' + esc(l.title) + '</h3>' +
+        '<p class="card-desc">' + esc(l.short_description) + '</p>' +
+        stars(l.avg_rating, l.review_count) +
+      '</div>' +
+      '<div class="card-foot">' +
+        '<span class="price">' + money(l.price_cents) + '</span>' +
+        '<span class="seller-inline spacer">' + avatarFor(l.seller_name) +
+          esc(l.seller_name || '—') + '</span>' +
+      '</div>' +
+    '</a>';
+  }
+
   /* Clickable version for the listing page. Browse cards can't use these — the
      whole card is already an anchor, and anchors can't nest. */
   function tagLinks(tags) {
@@ -43,7 +87,9 @@
     }).join('');
   }
   function statusPill(s) {
-    return '<span class="pill st-' + esc(s) + '">' + esc(STATUS_LABELS[s] || s) + '</span>';
+    var cls = s === 'live' ? 'badge-live' : s === 'pending_review' ? 'badge-accent'
+            : s === 'delisted' ? 'badge-danger' : '';
+    return '<span class="badge ' + cls + '">' + esc(STATUS_LABELS[s] || s) + '</span>';
   }
   function fail(e) {
     return '<div class="empty"><h3>Something broke</h3><p>' + esc(e.message || e) + '</p></div>';
@@ -78,8 +124,10 @@
            '<a href="#/dashboard/buyer" class="' + (onBuying ? 'on' : '') + '">Purchases</a>' : '');
 
     if (u) {
-      right.innerHTML = '<a class="who" href="#/dashboard/profile">' + esc(u.email) + '</a>' +
-                        '<button class="btn btn-quiet btn-sm" id="signout">Sign out</button>';
+      right.innerHTML =
+        '<a class="who" href="#/dashboard/profile" title="' + esc(u.email) + '">' +
+          avatarFor(u.email) + '<span class="hide-sm">' + esc(u.email.split('@')[0]) + '</span></a>' +
+        '<button class="btn btn-quiet btn-sm" id="signout">Sign out</button>';
       el('signout').onclick = function () {
         DB.signOut().then(function () { paintNav(); go('#/browse'); render(); });
       };
@@ -103,21 +151,21 @@
     history.replaceState(null, '', '#/browse' + (qs ? '?' + qs : ''));
   }
 
-  function stars(avg, count, size) {
-    if (!count) return '<span class="stars none">no reviews yet</span>';
-    var full = Math.round(avg);
-    var out = '';
-    for (var i = 1; i <= 5; i++) out += '<span class="' + (i <= full ? 'on' : '') + '">★</span>';
-    return '<span class="stars' + (size === 'lg' ? ' lg' : '') + '">' + out +
-      '<b>' + Number(avg).toFixed(1) + '</b><span class="n">(' + count + ')</span></span>';
+  function stars(avg, count) {
+    if (!count) return '<span class="stars none">No reviews yet</span>';
+    var full = Math.round(avg), s = '';
+    for (var i = 1; i <= 5; i++) s += (i <= full ? '<b>★</b>' : '★');
+    return '<span class="stars"><span class="s">' + s + '</span>' +
+      '<span class="val">' + Number(avg).toFixed(1) + '</span>' +
+      '<span>(' + count + ')</span></span>';
   }
 
   function demoBadge(l) {
     if (!l.demo_url) return '';
     if (l.demo_status === 'error') {
-      return '<span class="pill st-delisted" title="Our health check could not reach this demo">demo down</span>';
+      return '<span class="badge badge-danger" title="Our health check could not reach this demo">Demo down</span>';
     }
-    return '<span class="pill pill-live"><span class="dot"></span>live demo</span>';
+    return '<span class="badge badge-live"><span class="dot"></span>Live demo</span>';
   }
 
   function viewBrowse(query) {
@@ -131,33 +179,48 @@
         '<h1>Browse tools</h1>' +
         '<p>Every listing has a live demo. Use it before you decide.</p>' +
       '</div></div>' +
-      '<div class="filters">' +
-        '<input id="q" type="search" placeholder="Search title, description, stack…" value="' + esc(browseState.q) + '">' +
-        '<select id="sort" aria-label="Sort">' +
-          '<option value="newest">Newest first</option>' +
-          '<option value="rating">Best rated</option>' +
-          '<option value="price_asc">Price: low to high</option>' +
-          '<option value="price_desc">Price: high to low</option>' +
-        '</select>' +
-        '<div class="chips" id="chips"></div>' +
-      '</div>' +
-      '<div id="active-tag"></div>' +
-      '<div id="results"><div class="empty"><p>Loading…</p></div></div>';
+
+      '<div class="browse-layout">' +
+        '<aside class="filters-rail">' +
+          '<div class="filter-group">' +
+            '<h4>Category</h4>' +
+            '<div class="filter-list" id="cats"></div>' +
+          '</div>' +
+          '<div class="filter-group">' +
+            '<h4>Search</h4>' +
+            '<input id="q" type="search" placeholder="Title, stack…" value="' + esc(browseState.q) + '">' +
+          '</div>' +
+        '</aside>' +
+
+        '<div>' +
+          '<div class="results-bar">' +
+            '<span class="count" id="count"></span>' +
+            '<select id="sort" aria-label="Sort">' +
+              '<option value="newest">Newest first</option>' +
+              '<option value="rating">Best rated</option>' +
+              '<option value="price_asc">Price: low to high</option>' +
+              '<option value="price_desc">Price: high to low</option>' +
+            '</select>' +
+          '</div>' +
+          '<div id="active-tag"></div>' +
+          '<div id="results"><div class="empty"><p>Loading…</p></div></div>' +
+        '</div>' +
+      '</div>';
 
     el('sort').value = browseState.sort;
 
-    var chips = el('chips');
-    chips.innerHTML = ['', 'scheduling', 'dashboard', 'intake_form', 'payroll', 'ai_integration', 'other']
+    var cats = el('cats');
+    cats.innerHTML = ['', 'scheduling', 'dashboard', 'intake_form', 'payroll', 'ai_integration', 'other']
       .map(function (c) {
-        return '<button class="chip" data-c="' + c + '" aria-pressed="' +
-          (browseState.category === c) + '">' + (c ? CATEGORY_LABELS[c] : 'All') + '</button>';
+        return '<button data-c="' + c + '" aria-pressed="' + (browseState.category === c) + '">' +
+          (c ? CATEGORY_LABELS[c] : 'All tools') + '</button>';
       }).join('');
 
-    chips.onclick = function (e) {
-      var b = e.target.closest('.chip');
+    cats.onclick = function (e) {
+      var b = e.target.closest('button');
       if (!b) return;
       browseState.category = b.dataset.c;
-      Array.prototype.forEach.call(chips.children, function (x) {
+      Array.prototype.forEach.call(cats.children, function (x) {
         x.setAttribute('aria-pressed', String(x === b));
       });
       loadResults();
@@ -183,8 +246,8 @@
     var tagBox = el('active-tag');
     if (tagBox) {
       tagBox.innerHTML = browseState.tag
-        ? '<div class="active-filter">Filtered by stack: <b>' + esc(browseState.tag) + '</b> ' +
-          '<button class="btn btn-quiet btn-sm" id="clear-tag">clear</button></div>'
+        ? '<div class="active-filter">Stack: <b>' + esc(browseState.tag) + '</b>' +
+          '<button class="btn btn-quiet btn-sm spacer" id="clear-tag">Clear</button></div>'
         : '';
       if (browseState.tag) {
         el('clear-tag').onclick = function () { browseState.tag = ''; loadResults(); };
@@ -198,10 +261,15 @@
       if (!box.isConnected) return;
       var live = rows.filter(function (l) { return l.status === 'live'; });
 
+      var counter = el('count');
+      if (counter) {
+        counter.textContent = live.length + ' tool' + (live.length === 1 ? '' : 's');
+      }
+
       if (!live.length) {
         box.innerHTML = '<div class="empty"><h3>Nothing matches</h3>' +
           '<p>No live listings fit those filters.</p>' +
-          '<button class="btn btn-ghost" id="clear-all">Clear filters</button></div>';
+          '<button class="btn btn-secondary" id="clear-all">Clear filters</button></div>';
         el('clear-all').onclick = function () {
           browseState = { q: '', category: '', tag: '', sort: 'newest' };
           viewBrowse({});
@@ -209,23 +277,7 @@
         return;
       }
 
-      box.innerHTML =
-        '<div class="result-count">' + live.length + ' tool' + (live.length === 1 ? '' : 's') + '</div>' +
-        '<div class="grid">' + live.map(function (l) {
-          return '<a class="card" href="#/listing/' + esc(l.id) + '">' +
-            '<div class="row-top">' +
-              demoBadge(l) +
-              '<span class="pill">' + esc(CATEGORY_LABELS[l.category] || l.category) + '</span>' +
-            '</div>' +
-            '<h3>' + esc(l.title) + '</h3>' +
-            '<div style="margin-bottom:9px">' + stars(l.avg_rating, l.review_count) + '</div>' +
-            '<p>' + esc(l.short_description) + '</p>' +
-            '<div class="tags">' + tagList(l.tech_stack_tags) + '</div>' +
-            '<div class="card-foot">' +
-              '<span class="price">' + money(l.price_cents) + '</span>' +
-              '<span class="pill">by ' + esc(l.seller_name || '—') + '</span>' +
-            '</div></a>';
-        }).join('') + '</div>';
+      box.innerHTML = '<div class="grid">' + live.map(listingCard).join('') + '</div>';
     }).catch(function (e) { box.innerHTML = fail(e); });
   }
 
@@ -235,32 +287,38 @@
     DB.getListing(id).then(function (l) {
       if (!l) {
         view.innerHTML = '<div class="empty"><h3>Listing not found</h3>' +
-          '<p>It may be a draft, or delisted.</p><a class="btn btn-ghost" href="#/browse">Back to browse</a></div>';
+          '<p>It may be a draft, or delisted.</p><a class="btn btn-secondary" href="#/browse">Back to browse</a></div>';
         return;
       }
       var me = DB.currentUser();
       var mine = me && l.seller_id === me.id;
 
       view.innerHTML =
+        '<div class="crumbs"><a href="#/browse">All tools</a><span>›</span>' +
+          '<a href="#/browse?cat=' + esc(l.category) + '">' +
+            esc(CATEGORY_LABELS[l.category] || l.category) + '</a><span>›</span>' +
+          esc(l.title) + '</div>' +
+
         '<div class="page-head"><div>' +
-          '<div class="row-top" style="margin-bottom:9px">' +
-            (l.demo_url ? '<span class="pill pill-live"><span class="dot"></span>live demo</span>' : '') +
-            '<span class="pill">' + esc(CATEGORY_LABELS[l.category] || l.category) + '</span>' +
+          '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">' +
+            demoBadge(l) +
+            '<span class="badge">' + esc(CATEGORY_LABELS[l.category] || l.category) + '</span>' +
             (l.status !== 'live' ? statusPill(l.status) : '') +
           '</div>' +
           '<h1>' + esc(l.title) + '</h1>' +
           '<p>' + esc(l.short_description) + '</p>' +
+          '<div style="margin-top:10px">' + stars(l.avg_rating, l.review_count) + '</div>' +
         '</div>' +
-        (mine ? '<div class="spacer"></div><a class="btn btn-quiet btn-sm" href="#/dashboard/seller/edit/' +
+        (mine ? '<div class="spacer"></div><a class="btn btn-secondary btn-sm" href="#/dashboard/seller/edit/' +
                 esc(l.id) + '">Edit listing</a>' : '') +
         '</div>' +
 
         '<div class="detail"><div>' +
           '<div class="demo-box">' +
             (l.demo_url
-              ? '<div class="demo-bar"><div class="lights"><i></i><i></i><i></i></div>' +
-                  '<span>' + esc(l.demo_url) + '</span>' +
-                  '<span style="margin-left:auto;color:var(--cyan)">● live sandbox</span></div>' +
+              ? '<div class="chrome"><div class="lights"><i></i><i></i><i></i></div>' +
+                  '<div class="addr">' + esc(l.demo_url) + '</div>' +
+                  '<span class="badge badge-live"><span class="dot"></span>live sandbox</span></div>' +
                 '<iframe class="demo-frame" title="Live demo" referrerpolicy="no-referrer" ' +
                   'sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads" ' +
                   'src="' + esc(l.demo_url) + '"></iframe>' +
@@ -292,33 +350,42 @@
 
         '<div class="side">' +
           '<div class="buybox">' +
-            '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px">' +
-              '<span class="price">' + money(l.price_cents) + '</span>' +
-              '<span style="font-family:var(--mono);font-size:11px;color:var(--dimmer)">one-time</span>' +
+            '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:13px">' +
+              '<span class="price" style="font-size:26px">' + money(l.price_cents) + '</span>' +
+              '<span style="font-size:12px;color:var(--ink-3)">one-time</span>' +
             '</div>' +
-            '<button class="btn btn-primary" style="width:100%" id="buy">Buy this tool</button>' +
+            '<button class="btn btn-primary btn-block btn-lg" id="buy">Buy this tool</button>' +
             '<div class="msg" id="buy-msg"></div>' +
-            '<div class="kv"><span>Seller</span><span>' +
-              '<a href="#/seller/' + esc(l.seller_id) + '">' + esc(l.seller_name || '—') + '</a></span></div>' +
-            '<div class="kv"><span>Rating</span><span>' + stars(l.avg_rating, l.review_count) + '</span></div>' +
-            '<div class="kv"><span>Category</span><span>' + esc(CATEGORY_LABELS[l.category] || l.category) + '</span></div>' +
-            '<div class="kv"><span>Repo access</span><span>' + (l.repo_url ? 'unlocked' : 'after purchase') + '</span></div>' +
+            '<div class="kv" style="margin-top:10px"><span>Category</span><span>' +
+              esc(CATEGORY_LABELS[l.category] || l.category) + '</span></div>' +
+            '<div class="kv"><span>Repo access</span><span>' +
+              (l.repo_url ? 'Unlocked' : 'After purchase') + '</span></div>' +
+            (l.latest_version
+              ? '<div class="kv"><span>Latest version</span><span>' + esc(l.latest_version) + '</span></div>' : '') +
             (l.demo_last_checked_at
               ? '<div class="kv"><span>Demo checked</span><span>' +
-                (l.demo_status === 'error' ? '<span style="color:var(--red)">failing</span>'
+                (l.demo_status === 'error' ? '<span style="color:var(--danger)">Failing</span>'
                                            : new Date(l.demo_last_checked_at).toLocaleDateString()) +
                 '</span></div>'
               : '') +
           '</div>' +
+
           '<div class="guarantee"><b>Outcome guarantee</b>' +
             'If your deployment doesn\'t do what this demo just did, refund yourself within 14 days. ' +
             'The seller isn\'t paid until that window closes.</div>' +
+
+          '<a class="seller-card" href="#/seller/' + esc(l.seller_id) + '">' +
+            avatarFor(l.seller_name) +
+            '<div><div class="name">' + esc(l.seller_name || '—') + '</div>' +
+            '<div class="meta">View their other tools →</div></div>' +
+          '</a>' +
+
           (l.tech_stack_tags && l.tech_stack_tags.length
             ? '<div><label>Stack</label><div class="tags">' + tagLinks(l.tech_stack_tags) + '</div>' +
               '<div class="hint">Click a tag to find other tools on the same stack.</div></div>' : '') +
-          (l.repo_url ? '<div><label>Repository</label><div class="tags">' +
-            '<a class="tag" href="' + esc(l.repo_url) + '" target="_blank" rel="noopener">' +
-            esc(l.repo_url) + ' ↗</a></div></div>' : '') +
+          (l.repo_url ? '<div><label>Repository</label>' +
+            '<a class="repo" href="' + esc(l.repo_url) + '" target="_blank" rel="noopener">' +
+            esc(l.repo_url) + ' ↗</a></div>' : '') +
         '</div></div>';
 
       // Changelog: seller sees an editor; a buyer sees which entries landed after
@@ -339,16 +406,7 @@
         var box = el('related-section');
         if (!box || !rel || !rel.length) return;
         box.innerHTML = '<h2>Similar tools</h2>' +
-          '<div class="grid related">' + rel.map(function (r) {
-            return '<a class="card" href="#/listing/' + esc(r.id) + '">' +
-              '<div class="row-top">' + demoBadge(r) + '</div>' +
-              '<h3>' + esc(r.title) + '</h3>' +
-              '<div style="margin-bottom:9px">' + stars(r.avg_rating, r.review_count) + '</div>' +
-              '<p>' + esc(r.short_description) + '</p>' +
-              '<div class="card-foot"><span class="price">' + money(r.price_cents) + '</span>' +
-                '<span class="pill">by ' + esc(r.seller_name || '—') + '</span></div>' +
-            '</a>';
-          }).join('') + '</div>';
+          '<div class="grid" style="margin-top:14px">' + rel.map(listingCard).join('') + '</div>';
       }).catch(function () { /* related is a nicety, never a blocker */ });
 
       // Reviews load after the page paints — the demo is what people came for.
@@ -363,13 +421,14 @@
         box.innerHTML = rs.map(function (r) {
           return '<div class="review">' +
             '<div class="review-head">' +
-              stars(r.rating, 1) +
-              '<span class="pill">verified purchase</span>' +
+              avatarFor(r.reviewer_name) +
+              '<span style="font-weight:550;font-size:14px">' + esc(r.reviewer_name || 'A buyer') + '</span>' +
+              '<span class="badge badge-live">✓ Verified purchase</span>' +
               '<span class="spacer"></span>' +
-              '<span class="hint">' + new Date(r.created_at).toLocaleDateString() + '</span>' +
+              '<span class="by">' + new Date(r.created_at).toLocaleDateString() + '</span>' +
             '</div>' +
+            '<div style="margin-bottom:6px">' + stars(r.rating, 1) + '</div>' +
             (r.body ? '<p>' + esc(r.body) + '</p>' : '') +
-            '<div class="hint">— ' + esc(r.reviewer_name || 'A buyer') + '</div>' +
           '</div>';
         }).join('');
       }).catch(function () {
@@ -420,7 +479,7 @@
             '<div class="row">' +
               '<input id="up-version" placeholder="v1.2.0 (optional)" style="max-width:180px">' +
               '<input id="up-body" placeholder="What changed? e.g. Fixed the webhook retry loop.">' +
-              '<button class="btn btn-ghost" id="up-save">Post</button>' +
+              '<button class="btn btn-secondary" id="up-save">Post</button>' +
             '</div>' +
             '<div class="msg" id="up-msg"></div>' +
           '</form>';
@@ -435,9 +494,9 @@
           var isNew = sinceISO && u.created_at > sinceISO;
           return '<li' + (isNew ? ' class="new"' : '') + '>' +
             '<div class="cl-head">' +
-              (u.version ? '<span class="pill">' + esc(u.version) + '</span>' : '') +
+              (u.version ? '<span class="badge">' + esc(u.version) + '</span>' : '') +
               '<span class="hint">' + new Date(u.created_at).toLocaleDateString() + '</span>' +
-              (isNew ? '<span class="pill pill-live">since you bought</span>' : '') +
+              (isNew ? '<span class="badge badge-live">since you bought</span>' : '') +
               (isOwner ? '<span class="spacer"></span>' +
                 '<button class="btn btn-quiet btn-sm up-del" data-id="' + esc(u.id) + '">Delete</button>' : '') +
             '</div>' +
@@ -485,23 +544,23 @@
       var s = res[0], listings = (res[1] || []).filter(function (l) { return l.status === 'live'; });
       if (!s) {
         view.innerHTML = '<div class="empty"><h3>No such seller</h3>' +
-          '<a class="btn btn-ghost" href="#/browse">Back to browse</a></div>';
+          '<a class="btn btn-secondary" href="#/browse">Back to browse</a></div>';
         return;
       }
       var me = DB.currentUser();
 
       view.innerHTML =
         '<div class="seller-hero">' +
-          '<div class="avatar">' + esc((s.display_name || '?').charAt(0).toUpperCase()) + '</div>' +
+          avatarFor(s.display_name, 'avatar-lg') +
           '<div>' +
             '<h1>' + esc(s.display_name || 'Unnamed builder') + '</h1>' +
-            '<div class="row-top" style="margin-top:9px">' +
-              '<span class="pill">' + (s.live_listing_count || 0) + ' live tool' +
+            '<div class="seller-meta">' +
+              '<span class="badge">' + (s.live_listing_count || 0) + ' live tool' +
                 (Number(s.live_listing_count) === 1 ? '' : 's') + '</span>' +
-              '<span class="pill">building here since ' +
+              '<span class="badge">Building here since ' +
                 new Date(s.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) +
               '</span>' +
-              '<span class="pill">' + stars(s.avg_rating, s.review_count) + '</span>' +
+              stars(s.avg_rating, s.review_count) +
             '</div>' +
             (s.bio ? '<p class="bio">' + esc(s.bio) + '</p>' : '') +
           '</div>' +
@@ -511,17 +570,7 @@
         '</div>' +
 
         (listings.length
-          ? '<div class="grid">' + listings.map(function (l) {
-              return '<a class="card" href="#/listing/' + esc(l.id) + '">' +
-                '<div class="row-top">' + demoBadge(l) +
-                  '<span class="pill">' + esc(CATEGORY_LABELS[l.category] || l.category) + '</span></div>' +
-                '<h3>' + esc(l.title) + '</h3>' +
-                '<div style="margin-bottom:9px">' + stars(l.avg_rating, l.review_count) + '</div>' +
-                '<p>' + esc(l.short_description) + '</p>' +
-                '<div class="tags">' + tagList(l.tech_stack_tags) + '</div>' +
-                '<div class="card-foot"><span class="price">' + money(l.price_cents) + '</span></div>' +
-              '</a>';
-            }).join('') + '</div>'
+          ? '<div class="grid">' + listings.map(listingCard).join('') + '</div>'
           : '<div class="empty"><h3>Nothing listed yet</h3></div>');
     }).catch(function (e) { view.innerHTML = fail(e); });
   }
@@ -765,15 +814,15 @@
               return '<tr>' +
                 '<td class="t-title">' + esc(l.title) +
                   '<small>updated ' + new Date(l.updated_at).toLocaleDateString() + '</small></td>' +
-                '<td><span class="pill">' + esc(CATEGORY_LABELS[l.category] || l.category) + '</span></td>' +
+                '<td><span class="badge">' + esc(CATEGORY_LABELS[l.category] || l.category) + '</span></td>' +
                 '<td style="font-family:var(--mono)">' + money(l.price_cents) + '</td>' +
                 '<td>' + (l.demo_url
-                  ? '<span class="pill pill-live"><span class="dot"></span>set</span>'
-                  : '<span class="pill st-delisted">missing</span>') + '</td>' +
+                  ? '<span class="badge badge-live"><span class="dot"></span>Set</span>'
+                  : '<span class="badge badge-danger">Missing</span>') + '</td>' +
                 '<td>' + statusPill(l.status) + '</td>' +
                 '<td><div class="actions">' +
                   '<a class="btn btn-quiet btn-sm" href="#/listing/' + esc(l.id) + '">View</a>' +
-                  '<a class="btn btn-ghost btn-sm" href="#/dashboard/seller/edit/' + esc(l.id) + '">Edit</a>' +
+                  '<a class="btn btn-secondary btn-sm" href="#/dashboard/seller/edit/' + esc(l.id) + '">Edit</a>' +
                 '</div></td></tr>';
             }).join('') + '</tbody></table></div>'
           : '<div class="empty"><h3>No listings yet</h3>' +
@@ -838,7 +887,7 @@
 
           '<div class="field"><label for="demo">Demo URL</label>' +
             '<div class="row"><input id="demo" value="' + esc(l.demo_url) + '" placeholder="https://your-demo.pages.dev">' +
-              '<button type="button" class="btn btn-ghost" id="test-demo">Test it</button></div>' +
+              '<button type="button" class="btn btn-secondary" id="test-demo">Test it</button></div>' +
             '<div class="msg" id="demo-msg"></div>' +
             '<div class="hint">Public, seeded with fake data, and actually working. This is the whole pitch — ' +
               'a listing without one won\'t pass review. We re-check live demos automatically and flag ' +
@@ -1019,7 +1068,7 @@
         if (!l) {
           view.innerHTML = '<div class="empty"><h3>Not found</h3>' +
             '<p>That listing doesn\'t exist, or isn\'t yours.</p>' +
-            '<a class="btn btn-ghost" href="#/dashboard/seller">Back</a></div>';
+            '<a class="btn btn-secondary" href="#/dashboard/seller">Back</a></div>';
           return;
         }
         paint(l);
@@ -1061,11 +1110,11 @@
             '<div class="purchase-head">' +
               '<div>' +
                 '<h3>' + esc(l ? l.title : 'Removed listing') + '</h3>' +
-                '<div class="row-top" style="margin-top:8px">' +
-                  '<span class="pill">' + money(p.amount_cents) + '</span>' +
-                  '<span class="pill st-' + (p.status === 'refunded' ? 'delisted' : 'live') + '">' +
+                '<div class="badge-row" style="margin-top:8px">' +
+                  '<span class="badge">' + money(p.amount_cents) + '</span>' +
+                  '<span class="badge ' + (p.status === 'refunded' ? 'badge-danger' : 'badge-live') + '">' +
                     esc(p.status) + '</span>' +
-                  (p.simulated ? '<span class="pill">simulated</span>' : '') +
+                  (p.simulated ? '<span class="badge">simulated</span>' : '') +
                 '</div>' +
               '</div>' +
               '<div class="spacer"></div>' +
@@ -1101,7 +1150,7 @@
                       }).join('') +
                     '</div>' +
                     '<textarea class="review-body" rows="2" placeholder="Did it deploy? Did it do what the demo showed?"></textarea>' +
-                    '<button class="btn btn-ghost btn-sm review-submit">Post review</button>' +
+                    '<button class="btn btn-secondary btn-sm review-submit">Post review</button>' +
                     '<div class="msg review-msg"></div>' +
                   '</div>'
                 : '') +
@@ -1137,7 +1186,7 @@
             '<div class="update-alert">' +
               '<b>' + since.length + ' update' + (since.length === 1 ? '' : 's') + ' since you bought</b>' +
               '<p>' + esc(since[0].body.slice(0, 120)) + (since[0].body.length > 120 ? '…' : '') + '</p>' +
-              '<a class="btn btn-ghost btn-sm" href="#/listing/' + esc(p.listing.id) + '">See changelog</a>' +
+              '<a class="btn btn-secondary btn-sm" href="#/listing/' + esc(p.listing.id) + '">See changelog</a>' +
             '</div>';
         }).catch(function () { /* non-critical */ });
       });
@@ -1245,7 +1294,7 @@
         return viewSeller();
       default:
         view.innerHTML = '<div class="empty"><h3>No such page</h3>' +
-          '<a class="btn btn-ghost" href="#/browse">Back to browse</a></div>';
+          '<a class="btn btn-secondary" href="#/browse">Back to browse</a></div>';
     }
   }
 
@@ -1391,6 +1440,24 @@
     }
     if (e.key === 'Escape' && palette.open) palette.close();
   });
+
+  /* The header search is the marketplace-standard entry point; it drives browse
+     rather than being a second, competing search. */
+  var headerSearch = el('hsearch');
+  if (headerSearch) {
+    headerSearch.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      var q = e.target.value.trim();
+      go('#/browse' + (q ? '?q=' + encodeURIComponent(q) : ''));
+      e.target.blur();
+    });
+    // Clicking it with ⌘K muscle memory should still work.
+    headerSearch.addEventListener('focus', function () {
+      if (window.innerWidth > 860) return;
+      palette.show();
+      this.blur();
+    });
+  }
 
   window.addEventListener('hashchange', render);
 

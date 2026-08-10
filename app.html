@@ -3,28 +3,37 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Forkable — app</title>
+<title>Forkable</title>
 <meta name="robots" content="noindex">
+<link rel="stylesheet" href="app/theme.css">
 <link rel="stylesheet" href="app/style.css">
 </head>
 <body>
 
 <div class="mode-banner" id="mode-banner"></div>
 
-<nav>
-  <div class="wrap nav-in">
-    <a href="index.html" class="logo">FORK<b>ABLE</b></a>
-    <div class="nav-links" id="nav-links"></div>
-    <div class="nav-right" id="nav-right"></div>
+<header class="site-header">
+  <div class="wrap header-in">
+    <a href="index.html" class="brand"><span class="mark">F</span><span class="brand-text">Forkable</span></a>
+    <div class="header-search">
+      <span class="icon">⌕</span>
+      <input id="hsearch" type="search" placeholder="Search tools…" aria-label="Search tools">
+      <kbd class="kbd-hint">⌘K</kbd>
+    </div>
+    <nav class="header-nav" id="nav-links"></nav>
+    <div class="header-nav" id="nav-right"></div>
   </div>
-</nav>
+</header>
 
 <main>
   <div class="wrap" id="view"></div>
 </main>
 
-<footer>
-  <div class="wrap">Forkable · builder-to-builder tools, with a demo you can use and a refund you control.</div>
+<footer class="site-footer">
+  <div class="wrap footer-in">
+    <span><strong style="color:var(--ink)">Forkable</strong> — tools you can use before you pay.</span>
+    <span class="spacer"><kbd>⌘K</kbd> to search from anywhere</span>
+  </div>
 </footer>
 
 <script src="config.js"></script>
