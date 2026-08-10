@@ -21,6 +21,10 @@ function rest(env, path, opts, token) {
       opts.headers || {}
     ),
     body: opts.body ? JSON.stringify(opts.body) : undefined
+  }).catch((e) => {
+    // A bad hostname or a network blip otherwise escapes as an opaque runtime
+    // error, which tells you nothing in the logs at 2am. Name it instead.
+    throw new Error(`Could not reach Supabase (${env.SUPABASE_URL}): ${e.message}`);
   }).then(async (res) => {
     if (res.status === 204) return null;
     const body = await res.json().catch(() => null);

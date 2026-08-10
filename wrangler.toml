@@ -1,0 +1,10 @@
+name = "forkable"
+
+# Pin this. Left unset, wrangler defaults to today's date, which can be newer than
+# the installed workerd binary supports and the local runtime refuses to start.
+# Bump it deliberately when you want newer runtime behaviour, not by accident.
+compatibility_date = "2026-08-01"
+
+# The site is plain static files at the repo root; functions/ is picked up
+# automatically and does not need a build step.
+pages_build_output_dir = "."

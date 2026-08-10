@@ -100,6 +100,15 @@ Auth email confirmation is on by default in Supabase. The signup flow handles th
 no-session-yet case ("check your email, then sign in") rather than hanging — turn
 confirmation off in Auth settings if you want instant signup while testing.
 
+## Setting it up for real
+
+**[SETUP.md](SETUP.md) is the walkthrough** — Supabase, Stripe Connect, deploy, and
+the payout schedule, in order, with the failure modes for each. Check progress with:
+
+```bash
+node scripts/preflight.mjs
+```
+
 ## Turning on payments
 
 1. Run `supabase/payments.sql`.
