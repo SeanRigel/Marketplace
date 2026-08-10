@@ -37,7 +37,8 @@
       listings: 'forkable_local_listings',
       purchases: 'forkable_local_purchases',
       reviews: 'forkable_local_reviews',
-      health: 'forkable_local_health'
+      health: 'forkable_local_health',
+      updates: 'forkable_local_updates'
     };
 
     function read(k) {
@@ -84,7 +85,9 @@
           short_description: l.shortDescription, long_description: l.longDescription,
           category: l.category, price_cents: l.priceCents,
           repo_url: 'https://github.com/rigel/' + l.id,
-          demo_url: '../' + l.demo,
+          // Root-relative: index.html and app.html both live at the repo root.
+          // '../' happened to work only because browsers clamp it there.
+          demo_url: l.demo,
           setup_instructions: '## Setup\n\n1. Clone the template repo.\n2. Copy `.env.example` to `.env`.\n3. Deploy to any static host.\n\nEstimated time: ~' + l.deployMinutes + ' minutes.',
           tech_stack_tags: l.stack, status: 'live',
           created_at: nowISO(), updated_at: nowISO()
@@ -139,6 +142,12 @@
       out.demo_status = h ? h.status : null;
       out.demo_last_checked_at = h ? h.last_checked_at : null;
       out.demo_consecutive_failures = h ? h.consecutive_failures : 0;
+
+      var ups = read(K.updates).filter(function (u) { return u.listing_id === l.id; })
+        .sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
+      out.update_count = ups.length;
+      out.last_update_at = ups.length ? ups[0].created_at : null;
+      out.latest_version = (ups.filter(function (u) { return u.version; })[0] || {}).version || null;
 
       if (!canSeeRepo(l)) delete out.repo_url;
       return out;
@@ -408,6 +417,69 @@
         })[0] || null);
       },
 
+      /* ---- changelog ---- */
+
+      listUpdates: function (listingId) {
+        return Promise.resolve(read(K.updates).filter(function (u) {
+          return u.listing_id === listingId;
+        }).sort(function (a, b) { return b.created_at.localeCompare(a.created_at); }));
+      },
+
+      createUpdate: function (listingId, version, body) {
+        var me = uid();
+        if (!me) return Promise.reject(new Error('Sign in first.'));
+        var l = read(K.listings).filter(function (x) { return x.id === listingId; })[0];
+        if (!l || l.seller_id !== me) return Promise.reject(new Error('That is not your listing.'));
+        if (!body || !body.trim()) return Promise.reject(new Error('Say what changed.'));
+
+        var rows = read(K.updates);
+        var row = {
+          id: uuid(), listing_id: listingId,
+          version: (version || '').trim() || null,
+          body: body.trim().slice(0, 4000),
+          created_at: nowISO()
+        };
+        rows.push(row);
+        write(K.updates, rows);
+        return Promise.resolve(row);
+      },
+
+      deleteUpdate: function (id) {
+        var me = uid();
+        var listingsById = {};
+        read(K.listings).forEach(function (l) { listingsById[l.id] = l; });
+
+        var rows = read(K.updates);
+        var kept = rows.filter(function (u) {
+          var l = listingsById[u.listing_id];
+          return !(u.id === id && l && l.seller_id === me);
+        });
+        if (kept.length === rows.length) return Promise.reject(new Error('Not found, or not yours.'));
+        write(K.updates, kept);
+        return Promise.resolve();
+      },
+
+      /* ---- related listings ---- */
+
+      relatedListings: function (listing, limit) {
+        var me = uid();
+        var tags = (listing.tech_stack_tags || []).map(function (t) { return t.toLowerCase(); });
+        var rows = read(K.listings).filter(function (l) {
+          return l.id !== listing.id && (l.status === 'live' || l.seller_id === me);
+        }).filter(function (l) { return l.status === 'live'; });
+
+        var scored = rows.map(function (l) {
+          var shared = (l.tech_stack_tags || []).filter(function (t) {
+            return tags.indexOf(t.toLowerCase()) !== -1;
+          }).length;
+          // Same category is a weaker signal than a shared stack, but still a signal.
+          return { l: l, score: shared * 2 + (l.category === listing.category ? 1 : 0) };
+        }).filter(function (x) { return x.score > 0; });
+
+        scored.sort(function (a, b) { return b.score - a.score; });
+        return Promise.resolve(scored.slice(0, limit || 3).map(function (x) { return decorate(x.l); }));
+      },
+
       /* ---- public seller profile ---- */
 
       getSeller: function (id) {
@@ -601,6 +673,38 @@
       getSeller: function (id) {
         return rest('/seller_public?select=*&id=eq.' + id)
           .then(function (r) { return (r && r[0]) || null; });
+      },
+
+      listUpdates: function (listingId) {
+        return rest('/listing_updates?select=*&listing_id=eq.' + listingId + '&order=created_at.desc');
+      },
+
+      createUpdate: function (listingId, version, body) {
+        return rest('/listing_updates', {
+          method: 'POST',
+          body: {
+            listing_id: listingId,
+            version: (version || '').trim() || null,
+            body: (body || '').trim().slice(0, 4000)
+          },
+          headers: { 'Prefer': 'return=representation' }
+        }).then(function (r) { return r && r[0]; });
+      },
+
+      deleteUpdate: function (id) {
+        return rest('/listing_updates?id=eq.' + id, { method: 'DELETE' });
+      },
+
+      relatedListings: function (listing, limit) {
+        var tags = listing.tech_stack_tags || [];
+        // Overlaps on any shared tag, else falls back to the same category.
+        var filter = tags.length
+          ? '&or=(tech_stack_tags.ov.{' + tags.map(encodeURIComponent).join(',') + '},category.eq.' +
+            encodeURIComponent(listing.category) + ')'
+          : '&category=eq.' + encodeURIComponent(listing.category);
+
+        return rest('/listings_with_seller?select=*&status=eq.live&id=neq.' + listing.id +
+                    filter + '&limit=' + (limit || 3));
       },
 
       listingsBySeller: function (id) {

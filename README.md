@@ -28,8 +28,39 @@ supabase/schema.sql     profiles, listings, purchases, reviews, sandbox_instance
 supabase/payments.sql   payout holds, fee settings, payouts_due + seller_earnings views
 supabase/reviews_and_health.sql
                         ratings, seller profiles, demo health + a view security fix
+supabase/changelog.sql  listing_updates + the "maintained?" summary view
 demos/                  three real working apps, served as Phase 1 sandbox demos
 ```
+
+### Listing changelogs
+
+Reusable software isn't a static download — a seller fixes a bug or bumps a dependency
+and, without this, nobody who already bought it ever finds out. Sellers post updates
+from the listing page; buyers see **"N updates since you bought"** on their purchases,
+and entries published after their purchase date are marked in the timeline.
+
+It does double duty: before a sale it's evidence the template is maintained, which is
+exactly what a technical buyer is trying to judge.
+
+### Listing completeness meter
+
+The seller form scores a listing live against eight checks. Two are hard gates because
+they're the promises the marketplace actually makes to buyers — a working demo, and
+setup docs good enough to deploy from. The rest is coaching, not enforcement. This is
+what keeps the manual `pending_review` step cheap: most of what a human reviewer would
+catch, the form catches first.
+
+### Command palette
+
+`⌘K` / `Ctrl+K` — jump to any route and search the catalog without loading the browse
+page. The audience lives on a keyboard.
+
+### Feeds
+
+`/api/feed` (JSON Feed 1.1) and `/api/feed?fmt=rss`. Public, cached 10 minutes, served
+through the anon key so RLS decides what's public rather than a hand-maintained column
+list. Gives the catalog a surface that newsletters and bots can consume without
+scraping a hash-routed SPA.
 
 ### Demo health checking
 

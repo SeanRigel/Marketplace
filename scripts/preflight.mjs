@@ -98,7 +98,10 @@ try {
 // payments are configured, so the rest is skipped rather than the run aborted.
 if (!supabaseUp) console.log('  \x1b[2mSkipping schema and security checks — no connection.\x1b[0m');
 
-for (const t of supabaseUp ? ['waitlist', 'profiles', 'listings', 'purchases', 'reviews', 'sandbox_instances', 'platform_settings'] : []) { // eslint-disable-line
+for (const t of supabaseUp
+  ? ['waitlist', 'profiles', 'listings', 'purchases', 'reviews',
+     'sandbox_instances', 'platform_settings', 'listing_updates']
+  : []) {
   const r = await sb(`/${t}?select=*&limit=1`, { key: env.SUPABASE_SERVICE_ROLE_KEY });
   if (r.status === 404 || r.json?.code === '42P01') bad(`Table "${t}" missing`, 'Run the SQL files in supabase/ in order.');
   else if (r.ok) ok(`Table "${t}"`);
@@ -107,7 +110,7 @@ for (const t of supabaseUp ? ['waitlist', 'profiles', 'listings', 'purchases', '
 
 for (const v of supabaseUp
   ? ['listings_with_seller', 'payouts_due', 'seller_earnings',
-     'listing_ratings', 'reviews_public', 'seller_public']
+     'listing_ratings', 'reviews_public', 'seller_public', 'listing_update_summary']
   : []) {
   const r = await sb(`/${v}?select=*&limit=1`, { key: env.SUPABASE_SERVICE_ROLE_KEY });
   if (r.ok) ok(`View "${v}"`);

@@ -23,12 +23,13 @@ if the public can read `repo_url` or mint their own purchases.
    the free tier is fine. Save the database password somewhere safe — you won't need
    it for this app, but you can't recover it.
 2. Wait for provisioning to finish (~2 min).
-3. Open **SQL Editor** and run these four files in order, one at a time. Each should
+3. Open **SQL Editor** and run these five files in order, one at a time. Each should
    report success before you run the next:
    - `supabase/waitlist.sql`
    - `supabase/schema.sql`
    - `supabase/payments.sql`
    - `supabase/reviews_and_health.sql`
+   - `supabase/changelog.sql`
 
    ⚠️ **The fourth file is not optional.** Besides reviews and demo health, it fixes a
    security hole: views created without `security_invoker = on` run with the view

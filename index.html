@@ -396,11 +396,41 @@
 </div>
 
 <script src="config.js"></script>
+<script src="app/db.js"></script>
 <script>
 (function () {
   'use strict';
   var CFG = window.FORKABLE_CONFIG || {};
   var LISTINGS = window.FORKABLE_LISTINGS || [];
+
+  /* The landing page shows the real catalog when there is one, so it can't drift
+   * from what /browse actually lists. Falls back to the curated array in config.js
+   * when the backend has nothing live yet — a marketing page with an empty grid is
+   * worse than one with three known-good examples. */
+  function loadRealListings() {
+    if (!window.DB) return Promise.resolve(null);
+    return window.DB.listListings({ sort: 'newest' }).then(function (rows) {
+      var live = (rows || []).filter(function (l) { return l.status === 'live'; });
+      if (!live.length) return null;
+      return live.slice(0, 3).map(function (l) {
+        return {
+          id: l.id,
+          title: l.title,
+          category: l.category,
+          priceCents: l.price_cents,
+          seller: { name: l.seller_name, handle: '@' + String(l.seller_name || 'builder').toLowerCase().replace(/\s+/g, ''), tools: 1 },
+          shortDescription: l.short_description,
+          longDescription: l.long_description,
+          demo: l.demo_url,
+          demoNote: 'Real running instance with demo data.',
+          stack: l.tech_stack_tags || [],
+          deployMinutes: null,
+          services: [],
+          href: 'app.html#/listing/' + l.id
+        };
+      });
+    }).catch(function () { return null; });
+  }
 
   var $ = function (id) { return document.getElementById(id); };
   function esc(s) {
@@ -413,24 +443,35 @@
 
   /* ---------- listing grid ---------- */
   var grid = $('listing-grid');
-  grid.innerHTML = LISTINGS.map(function (l, i) {
-    return '<article class="card" data-i="' + i + '" tabindex="0" role="button" ' +
-             'aria-label="Open ' + esc(l.title) + '">' +
-      '<div class="card-top">' +
-        '<span class="pill pill-live"><span class="dot"></span>live demo</span>' +
-        '<span class="pill">' + esc(catLabel(l.category)) + '</span>' +
-      '</div>' +
-      '<h3>' + esc(l.title) + '</h3>' +
-      '<p>' + esc(l.shortDescription) + '</p>' +
-      '<div class="tags">' + l.stack.map(function (t) {
-        return '<span class="tag">' + esc(t) + '</span>';
-      }).join('') + '</div>' +
-      '<div class="card-foot">' +
-        '<div class="price">' + money(l.priceCents) + '<small>' + l.deployMinutes + ' min to deploy</small></div>' +
-        '<span class="btn btn-ghost btn-sm">Open demo →</span>' +
-      '</div>' +
-    '</article>';
-  }).join('');
+
+  function paintGrid() {
+    grid.innerHTML = LISTINGS.map(function (l, i) {
+      return '<article class="card" data-i="' + i + '" tabindex="0" role="button" ' +
+               'aria-label="Open ' + esc(l.title) + '">' +
+        '<div class="card-top">' +
+          (l.demo ? '<span class="pill pill-live"><span class="dot"></span>live demo</span>' : '') +
+          '<span class="pill">' + esc(catLabel(l.category)) + '</span>' +
+        '</div>' +
+        '<h3>' + esc(l.title) + '</h3>' +
+        '<p>' + esc(l.shortDescription) + '</p>' +
+        '<div class="tags">' + (l.stack || []).map(function (t) {
+          return '<span class="tag">' + esc(t) + '</span>';
+        }).join('') + '</div>' +
+        '<div class="card-foot">' +
+          '<div class="price">' + money(l.priceCents) +
+            (l.deployMinutes ? '<small>' + l.deployMinutes + ' min to deploy</small>' : '') + '</div>' +
+          '<span class="btn btn-ghost btn-sm">Open demo →</span>' +
+        '</div>' +
+      '</article>';
+    }).join('');
+  }
+  paintGrid();
+
+  loadRealListings().then(function (real) {
+    if (!real) return;
+    LISTINGS = real;
+    paintGrid();
+  });
 
   /* ---------- modal ---------- */
   var modal = $('modal'), frame = $('m-frame'), lastFocus = null;
@@ -448,9 +489,12 @@
     $('m-note').innerHTML = esc(l.demoNote) +
       ' &nbsp;·&nbsp; <a href="' + esc(l.demo) + '" target="_blank" rel="noopener">open in a new tab ↗</a>';
     $('m-price').textContent = money(l.priceCents);
-    $('m-deploy').textContent = '~' + l.deployMinutes + ' min';
-    $('m-services').textContent = l.services.join(', ');
-    $('m-seller').textContent = l.seller.handle + ' · ' + l.seller.tools + ' tools';
+    $('m-deploy').textContent = l.deployMinutes ? '~' + l.deployMinutes + ' min' : 'see listing';
+    $('m-services').textContent = (l.services || []).join(', ') || 'see listing';
+    $('m-seller').textContent = l.seller.handle;
+    // Real listings link into the app; the curated fallback keeps the waitlist CTA.
+    $('m-buy').setAttribute('href', l.href || '#join');
+    $('m-buy').textContent = l.href ? 'View full listing →' : 'Buy — early access';
     $('m-desc').textContent = l.longDescription;
     $('m-stack').innerHTML = l.stack.map(function (t) {
       return '<span class="tag">' + esc(t) + '</span>';

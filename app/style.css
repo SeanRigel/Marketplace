@@ -218,4 +218,51 @@ tbody tr:hover{background:#111418}
 .seller-hero .bio{color:var(--dim);font-size:14.5px;margin:14px 0 0;max-width:62ch}
 .avatar{width:58px;height:58px;border-radius:12px;background:linear-gradient(135deg,var(--amber),#b8760f);color:#0a0a0a;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:25px;font-weight:700;flex:0 0 auto}
 
+/* ---------- changelog ---------- */
+.changelog{list-style:none;padding:0;margin:14px 0 0;counter-reset:cl}
+.changelog li{border-left:2px solid var(--line);padding:0 0 18px 18px;position:relative}
+.changelog li:last-child{padding-bottom:0}
+.changelog li::before{content:"";position:absolute;left:-5px;top:6px;width:8px;height:8px;border-radius:50%;background:var(--line)}
+.changelog li.new::before{background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+.cl-head{display:flex;align-items:center;gap:9px;margin-bottom:6px;flex-wrap:wrap}
+.cl-head .spacer{margin-left:auto}
+.changelog p{margin:0;font-size:14px;color:var(--dim);white-space:pre-line}
+.update-form{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:15px;margin-bottom:18px}
+.update-alert{border:1px solid #23343c;background:var(--cyan-dim);border-radius:9px;padding:13px;margin-top:15px}
+.update-alert b{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--cyan);margin-bottom:5px}
+.update-alert p{margin:0 0 10px;font-size:13px;color:#9fd8e4}
+.grid.related{margin-top:14px}
+
+/* ---------- quality meter ---------- */
+.quality{border:1px solid var(--line);background:var(--panel-2);border-radius:11px;padding:17px 19px;margin-top:6px}
+.q-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.q-head b{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dimmer);font-weight:500}
+.q-pct{font-family:var(--mono);font-size:15px;font-weight:700}
+.q-pct.low{color:var(--red)} .q-pct.mid{color:var(--amber)} .q-pct.ok{color:var(--cyan)}
+.q-bar{height:5px;background:#1a1e24;border-radius:3px;overflow:hidden;margin-bottom:14px}
+.q-bar i{display:block;height:100%;transition:width .25s}
+.q-bar i.low{background:var(--red)} .q-bar i.mid{background:var(--amber)} .q-bar i.ok{background:var(--cyan)}
+.q-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:5px 16px}
+@media(max-width:620px){.q-list{grid-template-columns:1fr}}
+.q-list li{font-size:13px;color:var(--dimmer);display:flex;align-items:baseline;gap:8px}
+.q-list li.on{color:var(--dim)}
+.q-list li em{color:var(--amber);font-style:normal;font-size:12px}
+.q-mark{font-size:11px;color:#3a4149;flex:0 0 auto}
+.q-list li.on .q-mark{color:var(--cyan)}
+
+/* ---------- command palette ---------- */
+.palette{position:fixed;inset:0;z-index:200;background:rgba(4,5,7,.7);backdrop-filter:blur(5px);display:none;padding:12vh 16px 0}
+.palette.on{display:block}
+.palette-sheet{max-width:560px;margin:0 auto;background:var(--panel);border:1px solid #2a3038;border-radius:13px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.palette-sheet input{border:0;border-bottom:1px solid var(--line);border-radius:0;font-size:15.5px;padding:16px 18px;background:transparent}
+.palette-sheet input:focus{border-color:var(--line)}
+.palette-sheet ul{list-style:none;margin:0;padding:6px;max-height:46vh;overflow-y:auto}
+.palette-sheet li{display:flex;align-items:center;gap:12px;padding:10px 13px;border-radius:7px;font-size:14px;cursor:pointer}
+.palette-sheet li.active{background:var(--amber-dim);color:var(--amber)}
+.palette-sheet li .pal-hint{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dimmer)}
+.palette-sheet li.active .pal-hint{color:var(--amber)}
+.pal-empty{color:var(--dimmer);font-size:13px;cursor:default !important}
+.palette-foot{display:flex;gap:16px;padding:10px 18px;border-top:1px solid var(--line);background:var(--panel-2);font-size:11px;color:var(--dimmer)}
+kbd{font-family:var(--mono);background:#1a1e24;border:1px solid #262c34;border-radius:4px;padding:1px 5px;margin-right:3px;font-size:10px}
+
 footer{border-top:1px solid var(--line);padding:26px 0;color:var(--dimmer);font-size:12.5px;font-family:var(--mono)}

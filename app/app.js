@@ -276,9 +276,18 @@
           (l.setup_instructions ? '<div class="prose"><h2>Setup &amp; deploy</h2>' +
             '<div class="body">' + esc(l.setup_instructions) + '</div></div>' : '') +
 
+          '<div class="prose" id="changelog-section">' +
+            '<h2>Changelog</h2>' +
+            '<p class="hint">Templates that keep getting fixed are worth more than ones that ' +
+              'shipped once. This is the seller\'s record of both.</p>' +
+            '<div id="changelog"><p class="hint">Loading…</p></div>' +
+          '</div>' +
+
           '<div class="prose" id="reviews-section">' +
             '<h2>Reviews</h2><div id="reviews"><p class="hint">Loading…</p></div>' +
           '</div>' +
+
+          '<div class="prose" id="related-section"></div>' +
         '</div>' +
 
         '<div class="side">' +
@@ -311,6 +320,36 @@
             '<a class="tag" href="' + esc(l.repo_url) + '" target="_blank" rel="noopener">' +
             esc(l.repo_url) + ' ↗</a></div></div>' : '') +
         '</div></div>';
+
+      // Changelog: seller sees an editor; a buyer sees which entries landed after
+      // they bought, which is the whole reason they'd read it.
+      if (me && !mine) {
+        DB.myPurchases().then(function (ps) {
+          var mineForThis = ps.filter(function (p) {
+            return p.listing_id === l.id && p.status === 'complete';
+          }).sort(function (a, b) { return a.created_at.localeCompare(b.created_at); })[0];
+          renderChangelog(l, false, mineForThis ? mineForThis.created_at : null);
+        }).catch(function () { renderChangelog(l, false); });
+      } else {
+        renderChangelog(l, mine);
+      }
+
+      // Related tools, by shared stack first and category second.
+      DB.relatedListings(l, 3).then(function (rel) {
+        var box = el('related-section');
+        if (!box || !rel || !rel.length) return;
+        box.innerHTML = '<h2>Similar tools</h2>' +
+          '<div class="grid related">' + rel.map(function (r) {
+            return '<a class="card" href="#/listing/' + esc(r.id) + '">' +
+              '<div class="row-top">' + demoBadge(r) + '</div>' +
+              '<h3>' + esc(r.title) + '</h3>' +
+              '<div style="margin-bottom:9px">' + stars(r.avg_rating, r.review_count) + '</div>' +
+              '<p>' + esc(r.short_description) + '</p>' +
+              '<div class="card-foot"><span class="price">' + money(r.price_cents) + '</span>' +
+                '<span class="pill">by ' + esc(r.seller_name || '—') + '</span></div>' +
+            '</a>';
+          }).join('') + '</div>';
+      }).catch(function () { /* related is a nicety, never a blocker */ });
 
       // Reviews load after the page paints — the demo is what people came for.
       DB.listReviews(l.id).then(function (rs) {
@@ -365,6 +404,77 @@
         });
       };
     }).catch(function (e) { view.innerHTML = fail(e); });
+  }
+
+  /* ------------------------------------------------------------- changelog */
+  function renderChangelog(listing, isOwner, sinceISO) {
+    var box = el('changelog');
+    if (!box) return;
+
+    DB.listUpdates(listing.id).then(function (ups) {
+      var html = '';
+
+      if (isOwner) {
+        html +=
+          '<form class="update-form" id="update-form">' +
+            '<div class="row">' +
+              '<input id="up-version" placeholder="v1.2.0 (optional)" style="max-width:180px">' +
+              '<input id="up-body" placeholder="What changed? e.g. Fixed the webhook retry loop.">' +
+              '<button class="btn btn-ghost" id="up-save">Post</button>' +
+            '</div>' +
+            '<div class="msg" id="up-msg"></div>' +
+          '</form>';
+      }
+
+      if (!ups.length) {
+        html += '<p class="hint">' + (isOwner
+          ? 'No updates posted yet. Buyers use this to judge whether a template is maintained.'
+          : 'No updates posted yet.') + '</p>';
+      } else {
+        html += '<ol class="changelog">' + ups.map(function (u) {
+          var isNew = sinceISO && u.created_at > sinceISO;
+          return '<li' + (isNew ? ' class="new"' : '') + '>' +
+            '<div class="cl-head">' +
+              (u.version ? '<span class="pill">' + esc(u.version) + '</span>' : '') +
+              '<span class="hint">' + new Date(u.created_at).toLocaleDateString() + '</span>' +
+              (isNew ? '<span class="pill pill-live">since you bought</span>' : '') +
+              (isOwner ? '<span class="spacer"></span>' +
+                '<button class="btn btn-quiet btn-sm up-del" data-id="' + esc(u.id) + '">Delete</button>' : '') +
+            '</div>' +
+            '<p>' + esc(u.body) + '</p>' +
+          '</li>';
+        }).join('') + '</ol>';
+      }
+
+      box.innerHTML = html;
+
+      if (isOwner) {
+        el('update-form').onsubmit = function (e) {
+          e.preventDefault();
+          var msg = el('up-msg'), btn = el('up-save');
+          var body = el('up-body').value.trim();
+          if (!body) { setMsg(msg, 'Say what changed.', 'err'); return; }
+
+          btn.disabled = true;
+          setMsg(msg, 'Posting…');
+
+          DB.createUpdate(listing.id, el('up-version').value, body)
+            .then(function () { renderChangelog(listing, isOwner, sinceISO); })
+            .catch(function (err) { btn.disabled = false; setMsg(msg, err.message, 'err'); });
+        };
+
+        box.addEventListener('click', function (e) {
+          var del = e.target.closest('.up-del');
+          if (!del) return;
+          if (!confirm('Delete this update?')) return;
+          DB.deleteUpdate(del.dataset.id)
+            .then(function () { renderChangelog(listing, isOwner, sinceISO); })
+            .catch(function (err) { setMsg(el('up-msg'), err.message, 'err'); });
+        });
+      }
+    }).catch(function () {
+      box.innerHTML = '<p class="hint">Changelog unavailable.</p>';
+    });
   }
 
   /* ------------------------------------------------------------- seller profile */
@@ -758,6 +868,8 @@
             }).join('') + '</select>' +
             '<div class="hint">A human reviews <em>pending review</em> listings before they go live.</div></div>' +
 
+          '<div class="quality" id="quality"></div>' +
+
           '<div class="form-actions">' +
             '<button class="btn btn-primary" id="save">' + (editing ? 'Save changes' : 'Create listing') + '</button>' +
             (editing ? '<a class="btn btn-quiet" href="#/listing/' + esc(l.id) + '">View</a>' : '') +
@@ -782,6 +894,48 @@
           status: el('status').value
         };
       }
+
+      /* A completeness meter beats a human reviewer for the boring 90%. Two items
+       * are hard requirements because they're the marketplace's actual promises:
+       * a working demo, and docs good enough to deploy from. The rest is coaching. */
+      function qualityChecks() {
+        var d = collect();
+        return [
+          { ok: d.title.length >= 8, label: 'Title that says what it is', required: false },
+          { ok: d.short_description.length >= 40, label: 'Short description (40+ chars)', required: false },
+          { ok: d.long_description.length >= 120, label: 'Long description (120+ chars)', required: false },
+          { ok: !!d.demo_url, label: 'Working demo URL', required: true,
+            why: 'This is the entire differentiator. No demo, no listing.' },
+          { ok: (d.setup_instructions || '').length >= 80, label: 'Setup instructions (80+ chars)', required: true,
+            why: 'We promise buyers deploy in under an hour. That needs real docs.' },
+          { ok: !!d.repo_url, label: 'Repo URL', required: false },
+          { ok: d.tech_stack_tags.length >= 2, label: 'At least 2 stack tags', required: false },
+          { ok: d.price_cents > 0, label: 'A price', required: false }
+        ];
+      }
+
+      function paintQuality() {
+        var checks = qualityChecks();
+        var done = checks.filter(function (c) { return c.ok; }).length;
+        var pct = Math.round((done / checks.length) * 100);
+        var tone = pct >= 85 ? 'ok' : pct >= 50 ? 'mid' : 'low';
+
+        el('quality').innerHTML =
+          '<div class="q-head"><b>Listing completeness</b>' +
+            '<span class="q-pct ' + tone + '">' + pct + '%</span></div>' +
+          '<div class="q-bar"><i class="' + tone + '" style="width:' + pct + '%"></i></div>' +
+          '<ul class="q-list">' + checks.map(function (c) {
+            return '<li class="' + (c.ok ? 'on' : '') + '">' +
+              '<span class="q-mark">' + (c.ok ? '✔' : '○') + '</span>' + esc(c.label) +
+              (c.required && !c.ok ? '<em> — required to go live</em>' : '') +
+            '</li>';
+          }).join('') + '</ul>';
+      }
+
+      ['title', 'short', 'long', 'demo', 'repo', 'tags', 'setup', 'price'].forEach(function (id) {
+        el(id).addEventListener('input', paintQuality);
+      });
+      paintQuality();
 
       el('test-demo').onclick = function () {
         var url = el('demo').value.trim();
@@ -823,10 +977,15 @@
         if (!data.short_description) {
           m.className = 'msg err'; m.textContent = 'A short description is what buyers skim.'; return;
         }
-        if (data.status === 'live' && !data.demo_url) {
-          m.className = 'msg err';
-          m.textContent = 'A live listing needs a demo URL — that is the entire differentiator.';
-          return;
+        // Enforce only what the marketplace actually promises buyers. Everything
+        // else in the meter is advice, not a gate.
+        if (data.status === 'live' || data.status === 'pending_review') {
+          var missing = qualityChecks().filter(function (c) { return c.required && !c.ok; });
+          if (missing.length) {
+            setMsg(m, missing[0].label + ' — ' + missing[0].why, 'err');
+            el('quality').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+          }
         }
 
         btn.disabled = true;
@@ -923,6 +1082,8 @@
                       ? 'Access ended with the refund.'
                       : 'Unlocking — reload in a moment.') + '</div>') +
 
+                '<div class="updates-slot"></div>' +
+
                 (l && l.setup_instructions
                   ? '<div style="margin-top:16px"><label>Setup &amp; deploy</label>' +
                     '<div class="setup">' + esc(l.setup_instructions) + '</div></div>'
@@ -963,6 +1124,23 @@
             '</div>' +
           '</div>';
         }).join('') + '</div>';
+
+      // "Updated since you bought" — the reason the changelog exists.
+      rows.forEach(function (p) {
+        if (!p.listing) return;
+        DB.listUpdates(p.listing.id).then(function (ups) {
+          var since = ups.filter(function (u) { return u.created_at > p.created_at; });
+          if (!since.length) return;
+          var slot = document.querySelector('.purchase[data-id="' + p.id + '"] .updates-slot');
+          if (!slot) return;
+          slot.innerHTML =
+            '<div class="update-alert">' +
+              '<b>' + since.length + ' update' + (since.length === 1 ? '' : 's') + ' since you bought</b>' +
+              '<p>' + esc(since[0].body.slice(0, 120)) + (since[0].body.length > 120 ? '…' : '') + '</p>' +
+              '<a class="btn btn-ghost btn-sm" href="#/listing/' + esc(p.listing.id) + '">See changelog</a>' +
+            '</div>';
+        }).catch(function () { /* non-critical */ });
+      });
 
       // Replace the rating widget with the existing review where there is one.
       rows.filter(function (p) { return p.status === 'complete'; }).forEach(function (p) {
@@ -1070,6 +1248,149 @@
           '<a class="btn btn-ghost" href="#/browse">Back to browse</a></div>';
     }
   }
+
+  /* ------------------------------------------------------------- command palette
+   * The audience is people who live on a keyboard. ⌘K jumps anywhere and searches
+   * the catalog without a round trip through the browse page. */
+  var palette = {
+    open: false, items: [], active: 0, node: null,
+
+    build: function () {
+      if (this.node) return;
+      var n = document.createElement('div');
+      n.className = 'palette';
+      n.innerHTML =
+        '<div class="palette-sheet" role="dialog" aria-modal="true" aria-label="Command palette">' +
+          '<input id="pal-input" placeholder="Jump to, or search tools…" autocomplete="off" ' +
+            'aria-controls="pal-list" aria-expanded="true">' +
+          '<ul id="pal-list" role="listbox"></ul>' +
+          '<div class="palette-foot">' +
+            '<span><kbd>↑</kbd><kbd>↓</kbd> move</span>' +
+            '<span><kbd>↵</kbd> open</span>' +
+            '<span><kbd>esc</kbd> close</span>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(n);
+      this.node = n;
+
+      n.addEventListener('click', function (e) {
+        if (e.target === n) palette.close();
+        var li = e.target.closest('li[data-i]');
+        if (li) palette.run(Number(li.dataset.i));
+      });
+
+      n.querySelector('#pal-input').addEventListener('input', function (e) {
+        palette.search(e.target.value);
+      });
+
+      n.querySelector('#pal-input').addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); palette.move(1); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); palette.move(-1); }
+        else if (e.key === 'Enter') { e.preventDefault(); palette.run(palette.active); }
+      });
+    },
+
+    commands: function () {
+      var u = DB.currentUser();
+      var base = [
+        { label: 'Browse tools', hint: 'catalog', go: '#/browse' },
+        { label: 'Best rated', hint: 'sort', go: '#/browse?sort=rating' },
+        { label: 'Cheapest first', hint: 'sort', go: '#/browse?sort=price_asc' }
+      ];
+      if (u) {
+        base.push(
+          { label: 'Your listings', hint: 'selling', go: '#/dashboard/seller' },
+          { label: 'New listing', hint: 'selling', go: '#/dashboard/seller/new' },
+          { label: 'Your purchases', hint: 'buying', go: '#/dashboard/buyer' },
+          { label: 'Edit your profile', hint: 'account', go: '#/dashboard/profile' },
+          { label: 'Sign out', hint: 'account', act: function () {
+              DB.signOut().then(function () { paintNav(); go('#/browse'); render(); });
+            } }
+        );
+      } else {
+        base.push({ label: 'Sign in or sign up', hint: 'account', go: '#/auth' });
+      }
+      return base;
+    },
+
+    show: function () {
+      this.build();
+      this.open = true;
+      this.node.classList.add('on');
+      var input = this.node.querySelector('#pal-input');
+      input.value = '';
+      input.focus();
+      this.search('');
+    },
+
+    close: function () {
+      if (!this.node) return;
+      this.open = false;
+      this.node.classList.remove('on');
+    },
+
+    search: function (q) {
+      var self = this;
+      var term = q.trim().toLowerCase();
+
+      var cmds = this.commands().filter(function (c) {
+        return !term || c.label.toLowerCase().indexOf(term) !== -1;
+      });
+
+      if (!term) { self.items = cmds; self.active = 0; self.paint(); return; }
+
+      // Catalog search runs alongside the static commands.
+      DB.listListings({ q: term }).then(function (rows) {
+        var listings = rows.filter(function (l) { return l.status === 'live'; })
+          .slice(0, 6).map(function (l) {
+            return { label: l.title, hint: money(l.price_cents), go: '#/listing/' + l.id };
+          });
+        self.items = cmds.concat(listings);
+        self.active = 0;
+        self.paint();
+      }).catch(function () { self.items = cmds; self.active = 0; self.paint(); });
+    },
+
+    paint: function () {
+      var list = this.node.querySelector('#pal-list');
+      if (!this.items.length) {
+        list.innerHTML = '<li class="pal-empty">Nothing matches.</li>';
+        return;
+      }
+      var self = this;
+      list.innerHTML = this.items.map(function (it, i) {
+        return '<li data-i="' + i + '" role="option" aria-selected="' + (i === self.active) + '"' +
+          (i === self.active ? ' class="active"' : '') + '>' +
+          '<span>' + esc(it.label) + '</span>' +
+          '<span class="pal-hint">' + esc(it.hint || '') + '</span></li>';
+      }).join('');
+    },
+
+    move: function (delta) {
+      if (!this.items.length) return;
+      this.active = (this.active + delta + this.items.length) % this.items.length;
+      this.paint();
+      var el2 = this.node.querySelector('li.active');
+      if (el2) el2.scrollIntoView({ block: 'nearest' });
+    },
+
+    run: function (i) {
+      var it = this.items[i];
+      if (!it) return;
+      this.close();
+      if (it.act) it.act();
+      else if (it.go) go(it.go);
+    }
+  };
+
+  document.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      palette.open ? palette.close() : palette.show();
+      return;
+    }
+    if (e.key === 'Escape' && palette.open) palette.close();
+  });
 
   window.addEventListener('hashchange', render);
 
