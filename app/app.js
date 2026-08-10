@@ -206,9 +206,30 @@
         '</div></div>';
 
       el('buy').onclick = function () {
-        var m = el('buy-msg');
-        m.className = 'msg ok';
-        m.textContent = 'Checkout lands in step 3 (Stripe Connect). Nothing was charged.';
+        var m = el('buy-msg'), btn = el('buy');
+
+        if (!DB.currentUser()) {
+          m.className = 'msg err';
+          m.textContent = 'Sign in first — your purchase needs somewhere to live.';
+          setTimeout(function () { go('#/auth'); }, 900);
+          return;
+        }
+
+        btn.disabled = true;
+        m.className = 'msg';
+        m.textContent = 'Starting checkout…';
+
+        DB.startCheckout(l.id).then(function (r) {
+          if (r && r.url) { location.href = r.url; return; }   // Stripe Checkout
+          // Local mode books it immediately; there is no hosted page to visit.
+          m.className = 'msg ok';
+          m.textContent = 'Simulated purchase (local mode). Opening your purchases…';
+          setTimeout(function () { go('#/dashboard/buyer'); }, 700);
+        }).catch(function (err) {
+          btn.disabled = false;
+          m.className = 'msg err';
+          m.textContent = err.message;
+        });
       };
     }).catch(function (e) { view.innerHTML = fail(e); });
   }
@@ -316,22 +337,62 @@
     if (needAuth()) return;
     view.innerHTML = '<div class="empty"><p>Loading…</p></div>';
 
-    DB.myListings().then(function (rows) {
+    Promise.all([
+      DB.myListings(),
+      DB.connectStatus().catch(function (e) { return { error: e.message }; }),
+      DB.sellerEarnings().catch(function () { return null; })
+    ]).then(function (res) {
+      var rows = res[0], connect = res[1] || {}, earn = res[2] || {};
       var live = rows.filter(function (l) { return l.status === 'live'; }).length;
       var drafts = rows.filter(function (l) { return l.status === 'draft'; }).length;
       var pending = rows.filter(function (l) { return l.status === 'pending_review'; }).length;
 
+      var connectBanner;
+      if (connect.local) {
+        connectBanner = '<div class="notice">' +
+          '<b>Payouts need the live backend.</b> Stripe Connect onboarding runs through ' +
+          'the API functions — add Supabase and Stripe keys, then deploy, to enable it.</div>';
+      } else if (!connect.connected) {
+        connectBanner = '<div class="notice warn">' +
+          '<b>You can\'t be paid yet.</b> Connect a Stripe account to receive payouts. ' +
+          'Stripe handles identity and bank details — we never see them.' +
+          '<div style="margin-top:12px"><button class="btn btn-primary btn-sm" id="connect-btn">' +
+          'Set up payouts</button> <span class="msg" id="connect-msg"></span></div></div>';
+      } else if (!connect.charges_enabled || !connect.payouts_enabled) {
+        connectBanner = '<div class="notice warn">' +
+          '<b>Stripe still needs a few details.</b> Your listings can\'t sell until this is done.' +
+          ((connect.requirements_due || []).length
+            ? '<div class="hint" style="margin-top:6px">Outstanding: ' +
+              esc(connect.requirements_due.slice(0, 4).join(', ')) + '</div>' : '') +
+          '<div style="margin-top:12px"><button class="btn btn-primary btn-sm" id="connect-btn">' +
+          'Finish setup</button> <span class="msg" id="connect-msg"></span></div></div>';
+      } else {
+        connectBanner = '<div class="notice ok"><b>Payouts active.</b> ' +
+          'Earnings are transferred once each buyer\'s refund window closes.</div>';
+      }
+
       view.innerHTML =
         '<div class="page-head"><div>' +
-          '<h1>Selling</h1><p>Your listings. Payouts arrive with Stripe Connect in step 3.</p>' +
+          '<h1>Selling</h1><p>Your listings and what you\'ve earned.</p>' +
         '</div><div class="spacer"></div>' +
         '<a class="btn btn-primary" href="#/dashboard/seller/new">+ New listing</a></div>' +
 
+        connectBanner +
+
         '<div class="stat-row">' +
+          '<div class="stat"><div class="n">' + (earn.sales_count || 0) + '</div><div class="l">Sales</div></div>' +
+          '<div class="stat"><div class="n">' + money(earn.held_cents || 0) + '</div>' +
+            '<div class="l">Held (guarantee window)</div></div>' +
+          '<div class="stat"><div class="n">' + money(earn.paid_out_cents || 0) + '</div>' +
+            '<div class="l">Paid out</div></div>' +
+          '<div class="stat"><div class="n">' + live + '</div><div class="l">Live listings</div></div>' +
+        '</div>' +
+
+        '<div class="stat-row" style="margin-bottom:24px">' +
           '<div class="stat"><div class="n">' + rows.length + '</div><div class="l">Listings</div></div>' +
-          '<div class="stat"><div class="n">' + live + '</div><div class="l">Live</div></div>' +
           '<div class="stat"><div class="n">' + pending + '</div><div class="l">In review</div></div>' +
           '<div class="stat"><div class="n">' + drafts + '</div><div class="l">Drafts</div></div>' +
+          '<div class="stat"><div class="n">' + (earn.refund_count || 0) + '</div><div class="l">Refunds</div></div>' +
         '</div>' +
 
         (rows.length
@@ -355,6 +416,24 @@
           : '<div class="empty"><h3>No listings yet</h3>' +
             '<p>List a tool you\'ve already built for a client. The demo is what sells it.</p>' +
             '<a class="btn btn-primary" href="#/dashboard/seller/new">Create your first listing</a></div>');
+
+      var cbtn = el('connect-btn');
+      if (cbtn) {
+        cbtn.onclick = function () {
+          var m = el('connect-msg');
+          cbtn.disabled = true;
+          m.className = 'msg';
+          m.textContent = 'Opening Stripe…';
+          DB.startConnect().then(function (r) {
+            if (r && r.url) location.href = r.url;
+            else throw new Error('Stripe did not return an onboarding link.');
+          }).catch(function (err) {
+            cbtn.disabled = false;
+            m.className = 'msg err';
+            m.textContent = err.message;
+          });
+        };
+      }
     }).catch(function (e) { view.innerHTML = fail(e); });
   }
 
@@ -505,29 +584,105 @@
   }
 
   /* ------------------------------------------------------------- buyer dashboard */
+  function daysLeft(iso) {
+    return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+  }
+
   function viewBuyer() {
     if (needAuth()) return;
+    view.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+
     DB.myPurchases().then(function (rows) {
+      if (!rows.length) {
+        view.innerHTML =
+          '<div class="page-head"><div><h1>Purchases</h1>' +
+            '<p>Repo access, setup docs, and your refund window live here.</p></div></div>' +
+          '<div class="empty"><h3>No purchases yet</h3>' +
+          '<p>Browse the catalog, try the demos, buy the one that already does what you need.</p>' +
+          '<a class="btn btn-primary" href="#/browse">Browse tools</a></div>';
+        return;
+      }
+
       view.innerHTML =
         '<div class="page-head"><div><h1>Purchases</h1>' +
           '<p>Repo access, setup docs, and your refund window live here.</p></div></div>' +
-        (rows.length
-          ? '<div class="tbl-wrap"><table><thead><tr>' +
-              '<th>Tool</th><th>Paid</th><th>Status</th><th>Refund window</th><th></th>' +
-            '</tr></thead><tbody>' + rows.map(function (p) {
-              return '<tr>' +
-                '<td class="t-title">' + esc(p.listing ? p.listing.title : 'Removed listing') + '</td>' +
-                '<td style="font-family:var(--mono)">' + money(p.amount_cents) + '</td>' +
-                '<td>' + esc(p.status) + '</td>' +
-                '<td style="font-family:var(--mono)">' +
-                  new Date(p.refund_window_expires_at).toLocaleDateString() + '</td>' +
-                '<td><div class="actions">' + (p.listing
-                  ? '<a class="btn btn-quiet btn-sm" href="#/listing/' + esc(p.listing.id) + '">View</a>' : '') +
-                '</div></td></tr>';
-            }).join('') + '</tbody></table></div>'
-          : '<div class="empty"><h3>No purchases yet</h3>' +
-            '<p>Checkout arrives in step 3. Until then, browse the catalog and try the demos.</p>' +
-            '<a class="btn btn-primary" href="#/browse">Browse tools</a></div>');
+        '<div id="purchases">' + rows.map(function (p) {
+          var l = p.listing;
+          var left = daysLeft(p.refund_window_expires_at);
+          var open = p.status === 'complete' && left > 0;
+
+          return '<div class="purchase" data-id="' + esc(p.id) + '">' +
+            '<div class="purchase-head">' +
+              '<div>' +
+                '<h3>' + esc(l ? l.title : 'Removed listing') + '</h3>' +
+                '<div class="row-top" style="margin-top:8px">' +
+                  '<span class="pill">' + money(p.amount_cents) + '</span>' +
+                  '<span class="pill st-' + (p.status === 'refunded' ? 'delisted' : 'live') + '">' +
+                    esc(p.status) + '</span>' +
+                  (p.simulated ? '<span class="pill">simulated</span>' : '') +
+                '</div>' +
+              '</div>' +
+              '<div class="spacer"></div>' +
+              (l ? '<a class="btn btn-quiet btn-sm" href="#/listing/' + esc(l.id) + '">View listing</a>' : '') +
+            '</div>' +
+
+            '<div class="purchase-body">' +
+              '<div>' +
+                '<label>Repository</label>' +
+                (l && l.repo_url
+                  ? '<a class="repo" href="' + esc(l.repo_url) + '" target="_blank" rel="noopener">' +
+                    esc(l.repo_url) + ' ↗</a>'
+                  : '<div class="hint">' + (p.status === 'refunded'
+                      ? 'Access ended with the refund.'
+                      : 'Unlocking — reload in a moment.') + '</div>') +
+
+                (l && l.setup_instructions
+                  ? '<div style="margin-top:16px"><label>Setup &amp; deploy</label>' +
+                    '<div class="setup">' + esc(l.setup_instructions) + '</div></div>'
+                  : '') +
+              '</div>' +
+
+              '<div class="refund-box' + (open ? '' : ' closed') + '">' +
+                (p.status === 'refunded'
+                  ? '<b>Refunded</b><p>This purchase was refunded' +
+                    (p.refunded_at ? ' on ' + new Date(p.refunded_at).toLocaleDateString() : '') + '.</p>'
+                  : open
+                    ? '<b>Guarantee — ' + left + ' day' + (left === 1 ? '' : 's') + ' left</b>' +
+                      '<p>If this doesn\'t do what the demo showed, refund yourself. ' +
+                      'No ticket, no argument. The seller isn\'t paid until ' +
+                      new Date(p.refund_window_expires_at).toLocaleDateString() + '.</p>' +
+                      '<button class="btn btn-danger btn-sm refund-btn">Request refund</button>'
+                    : '<b>Window closed</b><p>The refund window closed on ' +
+                      new Date(p.refund_window_expires_at).toLocaleDateString() + '.</p>') +
+                '<div class="msg refund-msg"></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('') + '</div>';
+
+      el('purchases').addEventListener('click', function (e) {
+        var btn = e.target.closest('.refund-btn');
+        if (!btn) return;
+        var card = btn.closest('.purchase');
+        var msg = card.querySelector('.refund-msg');
+
+        var reason = prompt('What went wrong? (optional — helps us fix the listing)');
+        if (reason === null) return;   // cancelled
+
+        btn.disabled = true;
+        msg.className = 'msg';
+        msg.textContent = 'Processing…';
+
+        DB.requestRefund(card.dataset.id, reason).then(function () {
+          msg.className = 'msg ok';
+          msg.textContent = 'Refunded. Reloading…';
+          setTimeout(viewBuyer, 700);
+        }).catch(function (err) {
+          btn.disabled = false;
+          msg.className = 'msg err';
+          msg.textContent = err.message;
+        });
+      });
     }).catch(function (e) { view.innerHTML = fail(e); });
   }
 

@@ -1,0 +1,16 @@
+# Copy to .dev.vars for local `wrangler pages dev`, and set the same names in the
+# Cloudflare Pages dashboard for production. .dev.vars is gitignored — keep it that way.
+#
+# SUPABASE_SERVICE_ROLE_KEY and STRIPE_SECRET_KEY bypass every access control in
+# this project. They belong only here and in the Pages dashboard — never in
+# config.js, never in any file under app/.
+
+SUPABASE_URL=https://YOUR-PROJECT.supabase.co
+SUPABASE_ANON_KEY=eyJ...            # public, same value as config.js
+SUPABASE_SERVICE_ROLE_KEY=eyJ...    # SECRET — bypasses RLS
+
+STRIPE_SECRET_KEY=sk_test_...       # SECRET — use a test key until you're live
+STRIPE_WEBHOOK_SECRET=whsec_...     # from `stripe listen` or the webhook endpoint page
+
+SITE_URL=http://localhost:8788      # your deployed origin in production
+CRON_SECRET=generate-a-long-random-string

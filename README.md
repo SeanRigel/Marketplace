@@ -4,8 +4,8 @@ A builder-to-builder marketplace for reusable operational tools. Every listing i
 running app you can use before you pay, ships as a fork-and-deploy template, and is
 covered by a refund window.
 
-**Status: steps 0–2 done.** Validation landing page, plus auth, profiles, and listing
-CRUD. No payments — that's step 3.
+**Status: steps 0–3 done.** Validation landing page; auth, profiles, and listing CRUD;
+Stripe Connect checkout with held payouts and a self-service refund window.
 
 ---
 
@@ -18,10 +18,23 @@ app/db.js               data layer: Supabase backend | local backend, one interf
 app/app.js              hash router + views
 app/style.css           app styling (same tokens as the landing page)
 config.js               brand + Supabase keys + the featured listing data
+functions/api/*.js      Cloudflare Pages Functions — checkout, webhook, connect,
+                        refund, release-payouts
+functions/_shared/*.js  Stripe-over-fetch, Supabase server access, helpers
 supabase/waitlist.sql   waitlist table, unique index, RLS policy
 supabase/schema.sql     profiles, listings, purchases, reviews, sandbox_instances + RLS
+supabase/payments.sql   payout holds, fee settings, payouts_due + seller_earnings views
 demos/                  three real working apps, served as Phase 1 sandbox demos
 ```
+
+### Why Pages Functions
+
+Payments need server-side code — the Stripe secret key can never reach the browser.
+The brief named Cloudflare Pages and Supabase, so this uses **Pages Functions**: it
+ships with Pages, adds no new service or bill, and gives the webhook a public URL.
+Supabase Edge Functions would have worked equally well but meant a second deploy
+target. Stripe is called over plain `fetch` rather than the SDK, because the SDK
+would force a bundler and the project is deliberately build-step-free.
 
 ### Routing
 
@@ -87,6 +100,58 @@ Auth email confirmation is on by default in Supabase. The signup flow handles th
 no-session-yet case ("check your email, then sign in") rather than hanging — turn
 confirmation off in Auth settings if you want instant signup while testing.
 
+## Turning on payments
+
+1. Run `supabase/payments.sql`.
+2. In Stripe, enable **Connect** and complete the platform profile (see the lead-time
+   note below — this is the slow part).
+3. `cp .dev.vars.example .dev.vars` and fill it in. Set the same variables in the
+   Cloudflare Pages dashboard for production.
+4. Add a webhook endpoint pointing at `https://<your-domain>/api/webhook`, subscribed
+   to `checkout.session.completed`, `charge.refunded`, and `account.updated`.
+5. Run locally with `npx wrangler pages dev .` — the plain `python3 -m http.server`
+   serves the static files but not `/api/*`.
+
+Test the whole loop with Stripe test mode and card `4242 4242 4242 4242`.
+
+### The payout hold
+
+This is the guarantee, in code, and it's why checkout does **not** use a destination
+charge:
+
+- `checkout.js` charges onto the **platform** account with no `transfer_data`.
+- The webhook writes the purchase with `refund_window_expires_at = now + 14 days`.
+- Inside that window `refund.js` lets the buyer refund themselves — no approval, no
+  dispute queue.
+- Only once the window closes does `release-payouts.js` create the transfer to the
+  seller's Connect account.
+
+So a seller is genuinely unpaid while the buyer can still walk away. Swapping this for
+a destination charge would make the promise unenforceable.
+
+**Scheduling the payout sweep.** Pages Functions have no cron trigger, so
+`/api/release-payouts` is an HTTP endpoint guarded by `CRON_SECRET`. Point any
+scheduler at it — Supabase `pg_cron` with `pg_net`, a GitHub Action on a schedule, or
+cron-job.org. Daily is plenty:
+
+```bash
+curl -X POST https://<your-domain>/api/release-payouts -H "Authorization: Bearer $CRON_SECRET"
+```
+
+Until something calls it on a schedule, sellers never get paid — wire this up before
+your first real sale, not after.
+
+### Tests
+
+```bash
+node functions/_shared/stripe.test.mjs
+```
+
+Covers webhook signature verification (valid, tampered body, wrong secret, replayed
+timestamp, missing header, secret rotation) and Stripe's nested form encoding. Worth
+keeping green — a broken verifier means anyone who finds the URL can forge a completed
+purchase and unlock every repo.
+
 The anon key is public by design and the RLS policy only grants `insert`, so nobody
 can read the list back through it. The `service_role` key must never appear in any
 file in this directory.
@@ -113,15 +178,22 @@ are our own code, so this is fine today — but **before accepting seller-submit
 demos, move demos to their own origin** (e.g. `demos.<domain>`) so the boundary is
 enforced by the browser rather than by review. Cheap now, painful later.
 
-**Stripe Connect prerequisites.** Not blocking step 0, but worth knowing before step 3:
-a Connect *platform* needs a real business entity, a completed platform profile, and
-acceptance of the Connect ToS — it's a heavier setup than a normal Stripe account.
-Holding payout until the refund window closes also means separate charges and
-transfers with `transfer_data` deferred, not the default destination-charge flow.
-Budget real time for this; it's the longest lead-time item in the plan.
+**Stripe Connect prerequisites — the remaining blocker.** The code is written and
+tested, but a Connect *platform* needs a real business entity, a completed platform
+profile, and acceptance of the Connect ToS. That's account setup only you can do, and
+it's the long pole. Nothing charges until it's done.
 
-**Platform fee.** Not set anywhere yet. The brief says 15–20%; it only needs to be a
-real number when checkout gets built.
+**Platform fee** defaults to 1500 bps (15%) in `platform_settings`. It lives in the
+database rather than an env var so changing it is an audited update rather than a
+redeploy — and historical purchases keep the `platform_fee_cents` they were actually
+charged, so old rows don't silently re-price when you change the rate.
+
+**Currency is hardcoded to USD** in `checkout.js` and `release-payouts.js`. Fine for
+now; revisit when a seller outside the US wants to list.
+
+**Refunds are buyer-favourable on purpose** — self-service, no seller approval, per the
+brief. If someone starts refunding every purchase after cloning the repo, the fix is a
+per-buyer limit, not a dispute queue. Watch for it before building for it.
 
 **repo_url is protected by column privileges, not just RLS.** RLS is row-level, so a
 select policy alone would hand `repo_url` to anyone who can see the row — which is
@@ -142,10 +214,17 @@ a listing whose demo doesn't run — the whole pitch is that every demo works.
 
 ## Next step
 
-**Step 3: Stripe Connect.** Real checkout, platform fee, and payout held until the
-refund window closes. Start the Connect platform paperwork before writing code — see
-the note above; it's the longest lead-time item in the plan.
+**Step 4 is mostly already here** — Phase 1 sandbox linking and fork-and-deploy
+packaging are what the listing form and buyer dashboard already do (seller submits a
+demo URL and setup markdown; buyer gets repo access plus instructions on purchase).
 
-Two things worth doing alongside it, both currently stubbed:
-- `purchases` rows unlock `repo_url` — the plumbing exists, nothing writes to it yet.
-- Reviews are in the schema with policies, but have no UI.
+So the real remaining work is **step 5**: reviews (schema and policies exist, no UI
+yet), search and filter polish, and dashboard refinement.
+
+Before any of that, the thing that actually unblocks revenue:
+
+1. Create the Supabase project, run the three SQL files.
+2. Do the Stripe Connect platform setup.
+3. Deploy to Pages, set the env vars, register the webhook.
+4. Schedule the payout sweep.
+5. List your own three tools for real and get a stranger through checkout.

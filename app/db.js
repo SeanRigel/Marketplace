@@ -248,6 +248,84 @@
           var l = listings.filter(function (x) { return x.id === p.listing_id; })[0];
           return Object.assign({}, p, { listing: l ? decorate(l) : null });
         }));
+      },
+
+      settings: function () {
+        return Promise.resolve({ platform_fee_bps: 1500, refund_window_days: 14 });
+      },
+
+      /* Local mode has no Stripe, so checkout completes instantly and books the
+       * purchase itself. This is the only place the two backends genuinely differ
+       * in behaviour rather than just in transport — it exists so the guarantee
+       * mechanic (repo unlock, countdown, self-serve refund) can be exercised
+       * before a Stripe account exists. Live mode never calls this. */
+      startCheckout: function (listingId) {
+        var me = uid();
+        if (!me) return Promise.reject(new Error('Sign in first.'));
+
+        var l = read(K.listings).filter(function (x) { return x.id === listingId; })[0];
+        if (!l) return Promise.reject(new Error('Listing not found.'));
+        if (l.seller_id === me) return Promise.reject(new Error('You cannot buy your own listing.'));
+
+        var purchases = read(K.purchases);
+        if (purchases.some(function (p) {
+          return p.listing_id === listingId && p.buyer_id === me &&
+                 (p.status === 'complete' || p.status === 'pending');
+        })) return Promise.reject(new Error('You already own this tool.'));
+
+        var fee = Math.round(l.price_cents * 0.15);
+        purchases.push({
+          id: uuid(), listing_id: listingId, buyer_id: me, seller_id: l.seller_id,
+          stripe_payment_intent_id: null, amount_cents: l.price_cents,
+          platform_fee_cents: fee, status: 'complete',
+          refund_window_expires_at: new Date(Date.now() + 14 * 86400000).toISOString(),
+          payout_transfer_id: null, payout_released_at: null,
+          created_at: nowISO(), simulated: true
+        });
+        write(K.purchases, purchases);
+        return Promise.resolve({ simulated: true });
+      },
+
+      requestRefund: function (purchaseId) {
+        var me = uid(), purchases = read(K.purchases), found = null;
+        purchases.forEach(function (p) {
+          if (p.id !== purchaseId || p.buyer_id !== me) return;
+          found = p;
+        });
+        if (!found) return Promise.reject(new Error('That is not your purchase.'));
+        if (found.status === 'refunded') return Promise.resolve({ refunded: true, already: true });
+        if (new Date(found.refund_window_expires_at).getTime() < Date.now()) {
+          return Promise.reject(new Error('The refund window for this purchase has closed.'));
+        }
+        found.status = 'refunded';
+        found.refunded_at = nowISO();
+        write(K.purchases, purchases);
+        return Promise.resolve({ refunded: true });
+      },
+
+      connectStatus: function () {
+        return Promise.resolve({ connected: false, charges_enabled: false, payouts_enabled: false, local: true });
+      },
+
+      startConnect: function () {
+        return Promise.reject(new Error('Stripe onboarding needs the live backend — add Supabase and Stripe keys first.'));
+      },
+
+      sellerEarnings: function () {
+        var me = uid();
+        if (!me) return Promise.resolve(null);
+        var mineIds = read(K.listings).filter(function (l) { return l.seller_id === me; })
+          .map(function (l) { return l.id; });
+        var rows = read(K.purchases).filter(function (p) { return mineIds.indexOf(p.listing_id) !== -1; });
+        var net = function (p) { return p.amount_cents - p.platform_fee_cents; };
+        return Promise.resolve({
+          sales_count: rows.filter(function (p) { return p.status === 'complete'; }).length,
+          held_cents: rows.filter(function (p) { return p.status === 'complete' && !p.payout_released_at; })
+            .reduce(function (s, p) { return s + net(p); }, 0),
+          paid_out_cents: rows.filter(function (p) { return p.payout_released_at; })
+            .reduce(function (s, p) { return s + net(p); }, 0),
+          refund_count: rows.filter(function (p) { return p.status === 'refunded'; }).length
+        });
       }
     };
   }
@@ -397,7 +475,55 @@
       myPurchases: function () {
         var u = this.currentUser();
         if (!u) return Promise.resolve([]);
-        return rest('/purchases?select=*,listing:listings_with_seller(*)&buyer_id=eq.' + u.id);
+        return rest('/purchases?select=*,listing:listings_with_seller(*)&buyer_id=eq.' + u.id +
+                    '&order=created_at.desc');
+      },
+
+      settings: function () {
+        return rest('/platform_settings?select=*&limit=1').then(function (r) {
+          return (r && r[0]) || { platform_fee_bps: 1500, refund_window_days: 14 };
+        });
+      },
+
+      /* All of the following go through Pages Functions rather than PostgREST:
+         they need the Stripe secret key, which must never reach the browser. */
+      api: function (path, opts) {
+        opts = opts || {};
+        var s = session();
+        return fetch(path, {
+          method: opts.method || 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + ((s && s.access_token) || '')
+          },
+          body: opts.body ? JSON.stringify(opts.body) : undefined
+        }).then(function (res) {
+          return res.json().catch(function () { return null; }).then(function (j) {
+            if (!res.ok) throw new Error((j && j.error) || ('Request failed (' + res.status + ')'));
+            return j;
+          });
+        });
+      },
+
+      startCheckout: function (listingId) {
+        return this.api('/api/checkout', { method: 'POST', body: { listing_id: listingId } });
+      },
+
+      requestRefund: function (purchaseId, reason) {
+        return this.api('/api/refund', {
+          method: 'POST', body: { purchase_id: purchaseId, reason: reason || '' }
+        });
+      },
+
+      connectStatus: function () { return this.api('/api/connect'); },
+
+      startConnect: function () { return this.api('/api/connect', { method: 'POST' }); },
+
+      sellerEarnings: function () {
+        var u = this.currentUser();
+        if (!u) return Promise.resolve(null);
+        return rest('/seller_earnings?select=*&seller_id=eq.' + u.id)
+          .then(function (r) { return (r && r[0]) || null; });
       }
     };
   }
