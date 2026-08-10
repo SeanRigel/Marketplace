@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forkable — buy tools you can use before you pay</title>
+<meta name="description" content="A builder-to-builder marketplace for reusable operational tools. Every listing has a live demo you can click into, ships as a fork-and-deploy template, and is covered by a refund guarantee.">
+<style>
+  :root{
+    --bg:#08090b; --panel:#0f1114; --panel-2:#131619; --line:#1e2228;
+    --text:#e7ecf2; --dim:#8b95a3; --dimmer:#5d6672;
+    --amber:#ffb020; --amber-dim:#3a2a08;
+    --cyan:#22d3ee; --cyan-dim:#0b2f38;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+    line-height:1.6;-webkit-font-smoothing:antialiased;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(60rem 40rem at 15% -10%, rgba(255,176,32,.07), transparent 60%),
+      radial-gradient(50rem 35rem at 90% 0%, rgba(34,211,238,.06), transparent 60%);
+  }
+  .wrap{max-width:1120px;margin:0 auto;padding:0 24px;position:relative;z-index:1}
+  a{color:inherit}
+  h1,h2,h3{line-height:1.15;letter-spacing:-.02em;margin:0}
+
+  /* ---------- nav ---------- */
+  nav{
+    position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);
+    background:rgba(8,9,11,.82);border-bottom:1px solid var(--line);
+  }
+  .nav-in{display:flex;align-items:center;gap:28px;height:62px}
+  .logo{font-family:var(--mono);font-weight:700;font-size:16px;letter-spacing:-.02em;text-decoration:none}
+  .logo b{color:var(--amber)}
+  .nav-links{display:flex;gap:24px;margin-left:auto;font-size:14px;color:var(--dim)}
+  .nav-links a{text-decoration:none}
+  .nav-links a:hover{color:var(--text)}
+  @media(max-width:720px){.nav-links{display:none}}
+
+  .btn{
+    display:inline-block;font-family:var(--mono);font-size:13px;font-weight:600;
+    padding:11px 18px;border-radius:7px;text-decoration:none;cursor:pointer;
+    border:1px solid transparent;transition:.15s;white-space:nowrap;
+  }
+  .btn-primary{background:var(--amber);color:#0a0a0a;border-color:var(--amber)}
+  .btn-primary:hover{background:#ffc44d;transform:translateY(-1px)}
+  .btn-ghost{background:transparent;color:var(--cyan);border-color:#2a3540}
+  .btn-ghost:hover{border-color:var(--cyan);background:var(--cyan-dim)}
+  .btn-sm{padding:8px 14px;font-size:12px}
+
+  /* ---------- hero ---------- */
+  header{padding:88px 0 64px;text-align:center}
+  .kicker{
+    display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;
+    color:var(--cyan);border:1px solid #23343c;background:var(--cyan-dim);
+    padding:6px 13px;border-radius:999px;margin-bottom:26px;
+  }
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+  h1{font-size:clamp(34px,6vw,60px);font-weight:800;max-width:16ch;margin:0 auto}
+  h1 .hl{color:var(--amber)}
+  .sub{color:var(--dim);font-size:clamp(16px,2vw,19px);max-width:60ch;margin:22px auto 0}
+  .cta-row{display:flex;gap:12px;justify-content:center;margin-top:34px;flex-wrap:wrap}
+  .hero-note{font-family:var(--mono);font-size:12px;color:var(--dimmer);margin-top:20px}
+
+  /* ---------- sections ---------- */
+  section{padding:72px 0;position:relative;z-index:1}
+  .sec-head{margin-bottom:40px}
+  .sec-tag{font-family:var(--mono);font-size:12px;color:var(--amber);letter-spacing:.08em;text-transform:uppercase}
+  .sec-head h2{font-size:clamp(24px,3.6vw,34px);font-weight:750;margin-top:10px}
+  .sec-head p{color:var(--dim);max-width:64ch;margin:12px 0 0}
+
+  /* ---------- differentiators ---------- */
+  .diffs{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  @media(max-width:880px){.diffs{grid-template-columns:1fr}}
+  .diff{
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--line);border-radius:12px;padding:26px;position:relative;overflow:hidden;
+  }
+  .diff::after{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--amber),transparent);opacity:.5}
+  .diff .n{font-family:var(--mono);font-size:12px;color:var(--amber);margin-bottom:14px}
+  .diff h3{font-size:19px;font-weight:700;margin-bottom:10px}
+  .diff p{color:var(--dim);font-size:14.5px;margin:0}
+  .diff .vs{margin-top:16px;padding-top:14px;border-top:1px dashed #23282f;font-family:var(--mono);font-size:12px;color:var(--dimmer)}
+  .diff .vs s{color:#4a525d}
+
+  /* ---------- listings ---------- */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  @media(max-width:980px){.grid{grid-template-columns:1fr 1fr}}
+  @media(max-width:680px){.grid{grid-template-columns:1fr}}
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:22px;display:flex;flex-direction:column;transition:.18s;cursor:pointer;
+  }
+  .card:hover{border-color:#33404c;transform:translateY(-3px)}
+  .card-top{display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+  .pill{font-family:var(--mono);font-size:11px;padding:3px 9px;border-radius:5px;border:1px solid var(--line);color:var(--dim)}
+  .pill-live{color:var(--cyan);border-color:#23343c;background:var(--cyan-dim);display:inline-flex;align-items:center;gap:6px}
+  .card h3{font-size:17px;font-weight:700;margin-bottom:9px}
+  .card p{color:var(--dim);font-size:14px;margin:0 0 16px;flex:1}
+  .tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .tag{font-family:var(--mono);font-size:10.5px;color:var(--dimmer);border:1px solid #1c2026;padding:2px 7px;border-radius:4px}
+  .card-foot{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding-top:14px}
+  .price{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--amber)}
+  .price small{font-size:11px;color:var(--dimmer);font-weight:400;display:block;letter-spacing:.04em}
+
+  /* ---------- compare table ---------- */
+  .cmp-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;min-width:580px;font-size:14px}
+  th,td{padding:15px 18px;text-align:left;border-bottom:1px solid var(--line)}
+  thead th{font-family:var(--mono);font-size:12px;color:var(--dim);font-weight:500;background:var(--panel-2)}
+  thead th:last-child{color:var(--amber)}
+  tbody tr:last-child td{border-bottom:none}
+  td:first-child{color:var(--dim)}
+  .yes{color:var(--cyan)}
+  .no{color:#5d6672}
+
+  /* ---------- waitlist ---------- */
+  .join{
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--line);border-radius:16px;padding:44px;text-align:center;
+  }
+  @media(max-width:600px){.join{padding:28px 20px}}
+  .join h2{font-size:clamp(23px,3.4vw,31px);font-weight:750}
+  .join>p{color:var(--dim);max-width:52ch;margin:12px auto 28px}
+  .roles{display:flex;gap:8px;justify-content:center;margin-bottom:16px;flex-wrap:wrap}
+  .role{
+    font-family:var(--mono);font-size:12.5px;padding:9px 16px;border-radius:7px;
+    border:1px solid var(--line);background:var(--panel);color:var(--dim);cursor:pointer;transition:.15s;
+  }
+  .role:hover{border-color:#33404c;color:var(--text)}
+  .role[aria-pressed="true"]{border-color:var(--amber);color:var(--amber);background:var(--amber-dim)}
+  form{display:flex;gap:9px;max-width:520px;margin:0 auto;flex-wrap:wrap}
+  input,textarea{
+    font-family:var(--sans);font-size:14.5px;background:#0a0c0e;color:var(--text);
+    border:1px solid var(--line);border-radius:8px;padding:13px 15px;width:100%;
+  }
+  input:focus,textarea:focus{outline:none;border-color:var(--amber)}
+  input::placeholder,textarea::placeholder{color:var(--dimmer)}
+  .row{display:flex;gap:9px;width:100%}
+  .row input{flex:1}
+  .row .btn{flex:0 0 auto}
+  textarea{resize:vertical;min-height:70px;margin-top:9px}
+  .form-note{font-family:var(--mono);font-size:11.5px;color:var(--dimmer);margin-top:14px}
+  .msg{font-family:var(--mono);font-size:13px;margin-top:16px;min-height:20px}
+  .msg.ok{color:var(--cyan)}
+  .msg.err{color:#ff7a6b}
+
+  footer{border-top:1px solid var(--line);padding:34px 0;color:var(--dimmer);font-size:13px}
+  .foot-in{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center}
+
+  /* ---------- listing modal (preview of /listing/:id) ---------- */
+  .modal{
+    position:fixed;inset:0;z-index:100;background:rgba(4,5,7,.86);backdrop-filter:blur(6px);
+    display:none;overflow-y:auto;padding:28px 16px;
+  }
+  .modal.open{display:block}
+  .sheet{
+    max-width:1000px;margin:0 auto;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;overflow:hidden;
+  }
+  .sheet-head{display:flex;align-items:flex-start;gap:16px;padding:26px 28px;border-bottom:1px solid var(--line)}
+  .sheet-head h2{font-size:23px;font-weight:750}
+  .close{
+    margin-left:auto;background:transparent;border:1px solid var(--line);color:var(--dim);
+    border-radius:7px;width:34px;height:34px;font-size:18px;cursor:pointer;flex:0 0 auto;line-height:1;
+  }
+  .close:hover{border-color:#33404c;color:var(--text)}
+  .sheet-body{display:grid;grid-template-columns:1fr 320px;gap:0}
+  @media(max-width:860px){.sheet-body{grid-template-columns:1fr}}
+  .demo-pane{border-right:1px solid var(--line);min-width:0}
+  @media(max-width:860px){.demo-pane{border-right:none;border-bottom:1px solid var(--line)}}
+  .demo-bar{
+    display:flex;align-items:center;gap:10px;padding:11px 16px;background:var(--panel-2);
+    border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11.5px;color:var(--dim);
+  }
+  .demo-bar .lights{display:flex;gap:5px}
+  .demo-bar .lights i{width:9px;height:9px;border-radius:50%;background:#2a3038;display:block}
+  .demo-frame{width:100%;height:520px;border:0;background:#0a0c0e;display:block}
+  .demo-note{padding:11px 16px;font-size:12.5px;color:var(--dim);border-top:1px solid var(--line);background:var(--panel-2)}
+  .demo-note a{color:var(--cyan)}
+  .side{padding:24px;display:flex;flex-direction:column;gap:20px}
+  .side h4{font-family:var(--mono);font-size:11px;color:var(--dimmer);letter-spacing:.09em;text-transform:uppercase;margin:0 0 9px;font-weight:500}
+  .side .desc{font-size:14px;color:var(--dim);white-space:pre-line;margin:0}
+  .buybox{border:1px solid var(--line);border-radius:10px;padding:18px;background:var(--panel-2)}
+  .guarantee{
+    border:1px solid #3a2a08;background:var(--amber-dim);border-radius:9px;padding:14px;
+    font-size:13px;color:#e8c88a;
+  }
+  .guarantee b{color:var(--amber);display:block;font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px}
+  .kv{display:flex;justify-content:space-between;gap:12px;font-size:13.5px;padding:7px 0;border-bottom:1px solid #1a1e24}
+  .kv:last-child{border-bottom:none}
+  .kv span:first-child{color:var(--dimmer)}
+  .kv span:last-child{font-family:var(--mono);font-size:12.5px;text-align:right}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-in">
+    <a href="#top" class="logo">FORK<b>ABLE</b></a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#listings">Listings</a>
+      <a href="#compare">Why not PromptBase</a>
+    </div>
+    <a href="#join" class="btn btn-primary btn-sm">Get early access</a>
+  </div>
+</nav>
+
+<div class="wrap" id="top">
+  <header>
+    <div class="kicker"><span class="dot"></span> Builder-to-builder · early access</div>
+    <h1>Buy tools you can <span class="hl">use before you pay</span>.</h1>
+    <p class="sub">
+      A marketplace where solo builders and small agencies sell the operational tools they've
+      already shipped — schedulers, dashboards, intake forms, internal AI integrations — to other
+      builders who need the same thing for their own clients. Every listing is a running app you
+      can click into right now.
+    </p>
+    <div class="cta-row">
+      <a href="#listings" class="btn btn-primary">Try a live demo →</a>
+      <a href="#join" class="btn btn-ghost">Sell your tool</a>
+    </div>
+    <p class="hero-note">The three demos below are real, working apps. No signup, no screenshots.</p>
+  </header>
+</div>
+
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-tag">The whole pitch</div>
+      <h2>Everyone else sells software blind.</h2>
+      <p>
+        Screenshots, a feature list, maybe a Loom. You pay first and find out second. Three things
+        fix that, and they're the product — not features bolted onto a generic storefront.
+      </p>
+    </div>
+    <div class="diffs">
+      <div class="diff">
+        <div class="n">01</div>
+        <h3>Live sandbox on every listing</h3>
+        <p>Click into a real running instance with seeded demo data and actually use it. If it doesn't do what you need, you found out in ninety seconds and paid nothing.</p>
+        <div class="vs"><s>Screenshot gallery</s> → clickable app</div>
+      </div>
+      <div class="diff">
+        <div class="n">02</div>
+        <h3>Fork-and-deploy packaging</h3>
+        <p>A purchase isn't a zip file. It's a wired-up template — repo, config, setup script, env-var checklist — that gets you to your own live deployment in under an hour.</p>
+        <div class="vs"><s>download.zip, good luck</s> → deployed today</div>
+      </div>
+      <div class="diff">
+        <div class="n">03</div>
+        <h3>Outcome guarantee</h3>
+        <p>If the deployed tool doesn't do what the demo showed, you refund yourself inside the window. No ticket, no argument. Seller payout is held until it closes.</p>
+        <div class="vs"><s>all sales final</s> → 14-day self-serve refund</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="listings">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-tag">Launch listings</div>
+      <h2>Three tools, three working demos.</h2>
+      <p>
+        These are real tools built for real clients, listed by their builder. Open one and use it —
+        the demos run against live data and public APIs, not a mock.
+      </p>
+    </div>
+    <div class="grid" id="listing-grid"></div>
+  </div>
+</section>
+
+<section id="compare">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-tag">Positioning</div>
+      <h2>Why not just list it on PromptBase or Gumroad?</h2>
+      <p>Because neither was built for software that has to run somewhere after the sale.</p>
+    </div>
+    <div class="cmp-scroll">
+      <table>
+        <thead>
+          <tr><th>&nbsp;</th><th>Prompt marketplaces</th><th>Gumroad-style</th><th>Forkable</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Try before you buy</td><td class="no">Preview text</td><td class="no">Screenshots</td><td class="yes">Running app</td></tr>
+          <tr><td>What you receive</td><td class="no">A string</td><td class="no">A zip file</td><td class="yes">Deployable template</td></tr>
+          <tr><td>Time to your own instance</td><td class="no">n/a</td><td class="no">A weekend</td><td class="yes">Under an hour</td></tr>
+          <tr><td>Recourse if it doesn't work</td><td class="no">None</td><td class="no">Seller's call</td><td class="yes">Self-serve refund</td></tr>
+          <tr><td>Payout timing</td><td class="no">Instant</td><td class="no">Instant</td><td class="yes">Held past refund window</td></tr>
+          <tr><td>Built for</td><td class="no">Anyone</td><td class="no">Anyone</td><td class="yes">Technical buyers</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="join">
+  <div class="wrap">
+    <div class="join">
+      <h2>Early access</h2>
+      <p>
+        We're onboarding the first sellers and buyers by hand so the launch catalog is genuinely
+        good. Tell us which side you're on.
+      </p>
+
+      <div class="roles" id="roles">
+        <button type="button" class="role" data-role="buyer" aria-pressed="false">I'd buy tools</button>
+        <button type="button" class="role" data-role="seller" aria-pressed="false">I'd sell tools</button>
+        <button type="button" class="role" data-role="both" aria-pressed="true">Both</button>
+      </div>
+
+      <form id="wl-form" novalidate>
+        <div class="row">
+          <input type="email" id="wl-email" placeholder="you@domain.com" autocomplete="email" required>
+          <button type="submit" class="btn btn-primary" id="wl-submit">Request access</button>
+        </div>
+        <textarea id="wl-note" placeholder="Optional: what tool would you sell, or what are you tired of rebuilding?"></textarea>
+      </form>
+
+      <div class="msg" id="wl-msg" role="status" aria-live="polite"></div>
+      <p class="form-note">No launch spam. One email when your side of the marketplace opens.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-in">
+    <div>Forkable — a marketplace for tools that already work.</div>
+    <div style="font-family:var(--mono)">Validation build · not yet accepting payments</div>
+  </div>
+</footer>
+
+<!-- Preview of the /listing/:id page: demo first, buy box second. -->
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="m-title">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div>
+        <h2 id="m-title"></h2>
+        <div class="card-top" style="margin:10px 0 0" id="m-pills"></div>
+      </div>
+      <button class="close" id="m-close" aria-label="Close">×</button>
+    </div>
+    <div class="sheet-body">
+      <div class="demo-pane">
+        <div class="demo-bar">
+          <div class="lights"><i></i><i></i><i></i></div>
+          <span id="m-url"></span>
+          <span style="margin-left:auto;color:var(--cyan)">● live sandbox</span>
+        </div>
+        <!-- allow-same-origin is required: demo apps use localStorage, which throws in an
+             opaque-origin sandbox and kills their init script. Safe for cross-origin
+             seller-hosted demos (they keep their own origin). See README "Demo isolation"
+             before pointing this at a same-origin third-party demo. -->
+        <iframe class="demo-frame" id="m-frame" title="Live demo" loading="lazy"
+                referrerpolicy="no-referrer"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"></iframe>
+        <div class="demo-note" id="m-note"></div>
+      </div>
+      <div class="side">
+        <div class="buybox">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px">
+            <div class="price" id="m-price"></div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--dimmer)">one-time</div>
+          </div>
+          <a href="#join" class="btn btn-primary" style="width:100%;text-align:center" id="m-buy">Buy — early access</a>
+          <div class="kv" style="margin-top:14px"><span>Deploy time</span><span id="m-deploy"></span></div>
+          <div class="kv"><span>You'll need</span><span id="m-services"></span></div>
+          <div class="kv"><span>Seller</span><span id="m-seller"></span></div>
+        </div>
+        <div class="guarantee">
+          <b>Outcome guarantee</b>
+          If your deployment doesn't do what this demo just did, refund yourself within 14 days.
+          The seller isn't paid until that window closes.
+        </div>
+        <div>
+          <h4>What it is</h4>
+          <p class="desc" id="m-desc"></p>
+        </div>
+        <div>
+          <h4>Stack</h4>
+          <div class="tags" id="m-stack" style="margin:0"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+(function () {
+  'use strict';
+  var CFG = window.FORKABLE_CONFIG || {};
+  var LISTINGS = window.FORKABLE_LISTINGS || [];
+
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function money(cents) { return '$' + (cents / 100).toFixed(0); }
+  function catLabel(c) { return c.replace(/_/g, ' '); }
+
+  /* ---------- listing grid ---------- */
+  var grid = $('listing-grid');
+  grid.innerHTML = LISTINGS.map(function (l, i) {
+    return '<article class="card" data-i="' + i + '" tabindex="0" role="button" ' +
+             'aria-label="Open ' + esc(l.title) + '">' +
+      '<div class="card-top">' +
+        '<span class="pill pill-live"><span class="dot"></span>live demo</span>' +
+        '<span class="pill">' + esc(catLabel(l.category)) + '</span>' +
+      '</div>' +
+      '<h3>' + esc(l.title) + '</h3>' +
+      '<p>' + esc(l.shortDescription) + '</p>' +
+      '<div class="tags">' + l.stack.map(function (t) {
+        return '<span class="tag">' + esc(t) + '</span>';
+      }).join('') + '</div>' +
+      '<div class="card-foot">' +
+        '<div class="price">' + money(l.priceCents) + '<small>' + l.deployMinutes + ' min to deploy</small></div>' +
+        '<span class="btn btn-ghost btn-sm">Open demo →</span>' +
+      '</div>' +
+    '</article>';
+  }).join('');
+
+  /* ---------- modal ---------- */
+  var modal = $('modal'), frame = $('m-frame'), lastFocus = null;
+
+  function openListing(i) {
+    var l = LISTINGS[i];
+    if (!l) return;
+    lastFocus = document.activeElement;
+    $('m-title').textContent = l.title;
+    $('m-pills').innerHTML =
+      '<span class="pill pill-live"><span class="dot"></span>live demo</span>' +
+      '<span class="pill">' + esc(catLabel(l.category)) + '</span>' +
+      '<span class="pill">by ' + esc(l.seller.handle) + '</span>';
+    $('m-url').textContent = l.demo;
+    $('m-note').innerHTML = esc(l.demoNote) +
+      ' &nbsp;·&nbsp; <a href="' + esc(l.demo) + '" target="_blank" rel="noopener">open in a new tab ↗</a>';
+    $('m-price').textContent = money(l.priceCents);
+    $('m-deploy').textContent = '~' + l.deployMinutes + ' min';
+    $('m-services').textContent = l.services.join(', ');
+    $('m-seller').textContent = l.seller.handle + ' · ' + l.seller.tools + ' tools';
+    $('m-desc').textContent = l.longDescription;
+    $('m-stack').innerHTML = l.stack.map(function (t) {
+      return '<span class="tag">' + esc(t) + '</span>';
+    }).join('');
+    frame.src = l.demo;
+    modal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    $('m-close').focus();
+  }
+
+  function closeModal() {
+    modal.classList.remove('open');
+    frame.src = 'about:blank';
+    document.body.style.overflow = '';
+    if (lastFocus) lastFocus.focus();
+  }
+
+  grid.addEventListener('click', function (e) {
+    var card = e.target.closest('.card');
+    if (card) openListing(+card.dataset.i);
+  });
+  grid.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var card = e.target.closest('.card');
+    if (card) { e.preventDefault(); openListing(+card.dataset.i); }
+  });
+  $('m-close').addEventListener('click', closeModal);
+  $('m-buy').addEventListener('click', closeModal);
+  modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && modal.classList.contains('open')) closeModal();
+  });
+
+  /* ---------- waitlist ---------- */
+  var role = 'both';
+  $('roles').addEventListener('click', function (e) {
+    var b = e.target.closest('.role');
+    if (!b) return;
+    role = b.dataset.role;
+    Array.prototype.forEach.call(this.querySelectorAll('.role'), function (x) {
+      x.setAttribute('aria-pressed', String(x === b));
+    });
+  });
+
+  var msg = $('wl-msg'), submit = $('wl-submit');
+  function say(text, kind) { msg.textContent = text; msg.className = 'msg ' + (kind || ''); }
+
+  var LOCAL_MODE = !CFG.supabaseUrl || !CFG.supabaseAnonKey;
+
+  function saveLocal(row) {
+    var key = 'forkable_waitlist';
+    var all = [];
+    try { all = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { all = []; }
+    all.push(row);
+    localStorage.setItem(key, JSON.stringify(all));
+    return all.length;
+  }
+
+  $('wl-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var email = $('wl-email').value.trim();
+    var note = $('wl-note').value.trim();
+
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      say('That email doesn\'t look right.', 'err');
+      return;
+    }
+
+    var row = { email: email, role: role, note: note || null, created_at: new Date().toISOString() };
+    submit.disabled = true;
+    say('Sending…');
+
+    if (LOCAL_MODE) {
+      var n = saveLocal(row);
+      submit.disabled = false;
+      $('wl-form').reset();
+      say('Saved locally (' + n + ' on this device) — Supabase not configured yet.', 'ok');
+      return;
+    }
+
+    fetch(CFG.supabaseUrl.replace(/\/$/, '') + '/rest/v1/waitlist', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': CFG.supabaseAnonKey,
+        'Authorization': 'Bearer ' + CFG.supabaseAnonKey,
+        'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({ email: row.email, role: row.role, note: row.note })
+    }).then(function (res) {
+      submit.disabled = false;
+      if (res.ok) {
+        $('wl-form').reset();
+        say('You\'re on the list. We\'ll email you when your side opens.', 'ok');
+      } else if (res.status === 409) {
+        say('You\'re already on the list.', 'ok');
+      } else {
+        saveLocal(row);
+        say('Couldn\'t reach the server — saved locally, try again later.', 'err');
+      }
+    }).catch(function () {
+      submit.disabled = false;
+      saveLocal(row);
+      say('Network error — saved locally, try again later.', 'err');
+    });
+  });
+
+  /* Console helper for reading local-mode signups during validation. */
+  window.forkableWaitlist = function () {
+    try { return JSON.parse(localStorage.getItem('forkable_waitlist') || '[]'); }
+    catch (e) { return []; }
+  };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pool Scheduler</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#052738;--surface:rgba(10,34,48,0.88);--surface2:#123249;--border:rgba(120,200,255,0.10);--border2:rgba(120,200,255,0.18);--text:#f0f6f8;--muted:#8fa8b5;--faint:#4e6a78;--cyan:#3ee8c8;--cyan-dim:rgba(62,232,200,0.12);--cyan-glow:rgba(62,232,200,0.25);--green:#4dce8a;--green-dim:rgba(77,206,138,0.12);--orange:#f5a623;--red:#ff5c5c;--red-dim:rgba(255,92,92,0.15);--blue:#5b9dff;--radius:10px;--radius-sm:6px;}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased;}
+/* pool water background: deep-end gradient + sun glint + drifting caustic waves */
+body{background:
+  radial-gradient(900px 420px at 78% -60px, rgba(255,226,130,0.10), transparent 65%),
+  radial-gradient(1400px 700px at 20% 100%, rgba(62,232,200,0.08), transparent 60%),
+  linear-gradient(180deg,#03202e 0%,#07405c 48%,#052b3d 100%);}
+body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:0.5;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='90' viewBox='0 0 260 90'%3E%3Cpath d='M0 22 Q 32 8 65 22 T 130 22 T 195 22 T 260 22' fill='none' stroke='rgba(120,210,255,0.10)' stroke-width='2'/%3E%3Cpath d='M0 55 Q 32 41 65 55 T 130 55 T 195 55 T 260 55' fill='none' stroke='rgba(120,210,255,0.07)' stroke-width='2'/%3E%3Cpath d='M0 84 Q 32 70 65 84 T 130 84 T 195 84 T 260 84' fill='none' stroke='rgba(62,232,200,0.08)' stroke-width='2'/%3E%3C/svg%3E");
+  animation:drift 26s linear infinite;}
+@keyframes drift{from{background-position:0 0;}to{background-position:260px 0;}}
+.app{max-width:680px;margin:0 auto;padding:28px 20px 64px;}
+.page-header{margin-bottom:24px;}
+.page-accent{display:inline-block;width:44px;height:5px;border-radius:3px;margin-bottom:10px;background:repeating-linear-gradient(45deg,#ff5c5c 0 7px,#fff 7px 14px);}
+.page-title{font-size:22px;font-weight:600;letter-spacing:-0.3px;display:flex;align-items:center;gap:9px;}
+.lifering{width:26px;height:26px;flex:none;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.4));}
+.page-sub{font-size:13px;color:var(--muted);margin-top:5px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:14px;transition:border-color 0.2s;box-shadow:0 10px 30px rgba(0,10,20,0.35);backdrop-filter:blur(3px);}
+.card:focus-within{border-color:var(--border2);}
+label{display:block;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:0.5px;text-transform:uppercase;margin-bottom:7px;}
+textarea,input[type=number],input[type=text]{width:100%;padding:11px 13px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6;outline:none;transition:border-color 0.15s,box-shadow 0.15s;}
+textarea{resize:vertical;min-height:150px;}
+textarea:focus,input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px var(--cyan-glow);}
+textarea::placeholder,input::placeholder{color:var(--faint);}
+input[type=number]{max-width:90px;}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;transition:all 0.15s;white-space:nowrap;}
+.btn:hover{background:#252a3a;border-color:rgba(255,255,255,0.18);}
+.btn:disabled{opacity:0.4;cursor:not-allowed;}
+.btn-primary{background:var(--cyan);color:#0a1a16;border-color:var(--cyan);font-weight:600;}
+.btn-primary:hover{background:#5df0d4;border-color:#5df0d4;}
+.btn-ghost{background:transparent;}
+.btn-success{background:var(--green-dim);color:var(--green);border-color:rgba(77,206,138,0.3);}
+.btn-danger{background:var(--red-dim);color:var(--red);border-color:rgba(255,92,92,0.3);}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.alert{padding:11px 14px;border-radius:var(--radius-sm);font-size:13px;margin-top:12px;border:1px solid transparent;line-height:1.5;}
+.alert-success{background:var(--green-dim);color:var(--green);border-color:rgba(77,206,138,0.25);}
+.alert-info{background:var(--cyan-dim);color:var(--cyan);border-color:rgba(62,232,200,0.2);}
+.alert-warn{background:rgba(245,166,35,0.12);color:var(--orange);border-color:rgba(245,166,35,0.28);}
+.alert-danger{background:var(--red-dim);color:var(--red);border-color:rgba(255,92,92,0.25);}
+.pulse{animation:pulse 1.4s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+.badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:500;font-family:'DM Mono',monospace;white-space:nowrap;}
+.s-early{background:rgba(77,206,138,0.15);color:var(--green);}
+.s-morning{background:rgba(245,166,35,0.18);color:var(--orange);}
+.s-mid{background:rgba(255,92,92,0.18);color:var(--red);}
+.s-late{background:rgba(91,157,255,0.18);color:var(--blue);}
+.s-off{background:rgba(255,255,255,0.06);color:var(--faint);}
+.shift-legend{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);}
+.section-label{font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;}
+.pair-rule{display:inline-flex;align-items:center;gap:6px;background:rgba(255,92,92,0.1);border:1px solid rgba(255,92,92,0.28);border-radius:999px;padding:4px 12px;font-size:12px;color:#ff8a8a;margin:0 6px 6px 0;}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:6px 0 4px;}
+.stat{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;}
+.stat-n{font-size:26px;font-weight:600;line-height:1;}
+.stat-l{font-size:11px;color:var(--muted);margin-top:4px;font-weight:500;text-transform:uppercase;letter-spacing:0.4px;}
+.grid-wrap{overflow-x:auto;margin-top:12px;border-radius:var(--radius);border:1px solid var(--border);position:relative;}
+table.grid{border-collapse:collapse;font-size:11px;width:100%;}
+table.grid th{background:var(--surface2);padding:7px 8px;text-align:center;font-weight:600;font-size:10px;letter-spacing:0.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;}
+table.grid th:first-child{text-align:left;}
+table.grid td{padding:0;border-bottom:1px solid var(--border);border-left:1px solid var(--border);white-space:nowrap;}
+table.grid tr:last-child td{border-bottom:none;}
+table.grid td:first-child{border-left:none;}
+/* availability grid */
+table.avail td.name{padding:7px 10px;font-weight:500;min-width:140px;font-size:12px;}
+table.avail td.name .tag{display:inline-block;margin-left:6px;font-size:9px;font-family:'DM Mono',monospace;color:var(--orange);border:1px solid rgba(245,166,35,0.35);border-radius:4px;padding:0 5px;vertical-align:middle;}
+table.avail td.name small{color:var(--faint);cursor:pointer;font-size:10px;margin-left:6px;}
+table.avail td.cell{width:64px;min-width:52px;height:34px;text-align:center;cursor:pointer;font-family:'DM Mono',monospace;font-size:10px;user-select:none;transition:background 0.1s;}
+table.avail td.cell.on{background:rgba(77,206,138,0.05);color:var(--faint);}
+table.avail td.cell.on:hover{background:rgba(77,206,138,0.12);}
+table.avail td.cell.off{background:repeating-linear-gradient(45deg,#05070a,#05070a 5px,#0c0e12 5px,#0c0e12 10px);color:var(--red);font-weight:600;}
+table.avail td.cell.off:hover{filter:brightness(1.4);}
+/* schedule output — styled like her Google Sheet */
+table.sheet{border-collapse:collapse;font-size:12px;width:100%;min-width:760px;background:#fff;color:#111;}
+table.sheet th{background:#fff;color:#111;font-weight:600;padding:8px 10px;text-align:left;border:1px solid #d9d9d9;font-size:12px;white-space:nowrap;text-transform:none;letter-spacing:0;}
+table.sheet td{border:1px solid #d9d9d9;padding:0;white-space:nowrap;border-bottom:1px solid #d9d9d9;}
+table.sheet td.name{padding:7px 10px;font-weight:500;background:#fff;min-width:140px;cursor:default;font-size:12px;}
+table.sheet td.cell{min-width:96px;height:33px;padding:6px 9px;cursor:pointer;font-size:11.5px;font-weight:500;}
+table.sheet td.cell:not(.c-black):hover{filter:brightness(0.93);}
+.c-early{background:#b6d7a8;}
+.c-morning{background:#f6b26b;}
+.c-mid{background:#e06666;}
+.c-late{background:#6d9eeb;}
+.c-black{background:#000;cursor:default;}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:5px;}
+.modal-bg{position:absolute;inset:0;min-height:300px;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:10;backdrop-filter:blur(4px);}
+.modal{background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:20px;width:280px;box-shadow:0 20px 60px rgba(0,0,0,0.6);}
+.modal h3{margin-bottom:12px;font-size:15px;font-weight:600;}
+.modal .opt{display:block;width:100%;text-align:left;padding:9px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;cursor:pointer;margin-bottom:6px;}
+.modal .opt:hover{border-color:var(--cyan);}
+.foot{font-size:11px;color:var(--faint);text-align:center;margin-top:36px;font-family:'DM Mono',monospace;}
+.cfg-row{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;}
+.hint{font-size:12px;color:var(--faint);margin-top:8px;line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="page-header">
+    <div class="page-accent"></div>
+    <h1 class="page-title"><svg class="lifering" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="14" fill="#fff"/><path d="M16 2a14 14 0 0 1 9.9 4.1l-5 5a7 7 0 0 0-9.8 0l-5-5A14 14 0 0 1 16 2zm9.9 23.9a14 14 0 0 1-19.8 0l5-5a7 7 0 0 0 9.8 0z" fill="#ff5c5c"/><circle cx="16" cy="16" r="7" fill="#07405c"/><circle cx="16" cy="16" r="14" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="1"/></svg>Lifeguard Scheduler</h1>
+    <p class="page-sub">Week of <span id="week-label"></span></p>
+  </div>
+
+  <!-- STEP 1: paste texts (AI reads) -->
+  <div class="card">
+    <label>Paste everyone's texts <span style="text-transform:none;color:var(--faint);font-weight:400;">— optional, the AI fills the calendar for you</span></label>
+    <textarea id="comments" placeholder="Paste the whole group chat here — include each person's name. For example:
+
+Jemma: can't work Mon or Tue, mornings only
+Cade — off the weekend
+Sean can only ever work mornings
+Note: Gemma and Cade can never work the same shift
+Reagan out Wednesday and Friday"></textarea>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="analyze-btn" onclick="analyze()">✦ Read the texts</button>
+      <button class="btn btn-ghost" onclick="manualStart()">Skip → black out by hand</button>
+    </div>
+    <div class="hint">The AI reads the texts and fills in the calendar below (days off, shift limits, "can't work together" rules). Then you tweak it by hand.</div>
+    <div id="analyze-status"></div>
+  </div>
+
+  <!-- STEP 2: availability calendar (manual black-out) -->
+  <div class="card" id="avail-card" style="display:none;">
+    <p class="section-label">Availability — tap any box to black out a day someone can't work</p>
+    <div id="extras-box"></div>
+    <div class="grid-wrap">
+      <table class="grid avail" id="avail-table"></table>
+    </div>
+    <div class="hint">Green = available · <span style="color:var(--red)">hatched = blacked out (can't work)</span>. Tap a box to flip it; tap a name to black out their whole week.</div>
+    <div id="flags-box"></div>
+  </div>
+
+  <!-- STEP 3: coverage + generate -->
+  <div class="card" id="gen-card" style="display:none;">
+    <p class="section-label">Coverage needed per day &amp; limits</p>
+    <div class="cfg-row" id="cfg-shifts"></div>
+    <div class="cfg-row" style="margin-top:16px;">
+      <div><label>Max shifts / guard / week</label><input type="number" id="max-shifts" value="5" min="1" max="7"></div>
+    </div>
+    <div class="btn-row" style="margin-top:18px;">
+      <button class="btn btn-primary" id="gen-btn" onclick="generate()">📅 Generate schedule</button>
+      <button class="btn" id="reshuffle-btn" onclick="reshuffle()" style="display:none;">↻ Reshuffle</button>
+      <button class="btn btn-success" id="png-btn" onclick="downloadPNG()" style="display:none;">🖼 Download image</button>
+      <button class="btn btn-success" id="export-btn" onclick="exportCSV()" style="display:none;">↓ Export CSV</button>
+    </div>
+    <div id="gen-status"></div>
+  </div>
+
+  <!-- STEP 4: schedule output (breaks out wider than the form column, centered) -->
+  <div id="grid-section" style="display:none;width:min(96vw,1140px);position:relative;left:50%;transform:translateX(-50%);">
+    <div class="stats" id="stats"></div>
+    <div class="shift-legend" style="margin-bottom:6px;" id="legend"></div>
+    <div class="grid-wrap" style="background:#fff;">
+      <p style="font-size:11px;color:var(--faint);padding:8px 10px;border-bottom:1px solid var(--border);background:var(--surface);">✎ Tap any cell to change a shift · black = can't work (set above)</p>
+      <table class="sheet" id="sched-table"></table>
+      <div id="edit-modal" style="display:none;"></div>
+    </div>
+  </div>
+
+  <div class="foot" id="foot">Pool Scheduler · v3</div>
+</div>
+
+<script>
+// ---------- roster ----------
+const GUARDS=['Addison Bowen','Addison Nash','Alexandra Schafer','Ava Newman','Ava Platipodis','Ava Schafer','Brooke Byvoets','Cade Kennedy','Christian Cutka','Cora Patten','Drew Ball','Emma Stiener','Ian Kennedy','Jemma Cook','Jonah Lee','Kayle Anderson','Lexi Cutka','Logan Fox','Luke Pohlmeyer','Reagan Jackson','Riley Fox','Sean Schafer','Theo Piggot','Trey Nash','Tyne Vettickal'];
+
+// ---------- shifts (from her sheet) ----------
+// `days`: which days this shift exists at all — early (5:45AM) is Mon/Wed/Fri ONLY.
+const SHIFTS=[
+  {key:'early',   label:'Early',   time:'5:45AM-10:00', cls:'s-early',   need:2, sheet:'#b6d7a8', days:['mon','wed','fri']},
+  {key:'morning', label:'Morning', time:'9:45-3:00',    cls:'s-morning', need:6, sheet:'#f6b26b', days:DAY_KEYS_ALL()},
+  {key:'mid',     label:'Mid',     time:'11:45-6:00',   cls:'s-mid',     need:1, sheet:'#e06666', days:DAY_KEYS_ALL()},
+  {key:'late',    label:'Late',    time:'2:45-8:15',    cls:'s-late',    need:6, sheet:'#6d9eeb', days:DAY_KEYS_ALL()},
+];
+function DAY_KEYS_ALL(){return ['mon','tue','wed','thu','fri','sat','sun'];}
+const SHIFT_KEYS=SHIFTS.map(s=>s.key);
+const SHIFT_BY=Object.fromEntries(SHIFTS.map(s=>[s.key,s]));
+
+// ---------- week ----------
+function getWeekMonday(){const t=new Date();const d=t.getDay();const diff=d===0?1:8-d;const m=new Date(t);m.setDate(t.getDate()+diff);m.setHours(0,0,0,0);return m;}
+const WEEK_MON=getWeekMonday();
+function addDays(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r;}
+function fmt(d){return (d.getMonth()+1)+'/'+d.getDate();}
+const DAY_KEYS=['mon','tue','wed','thu','fri','sat','sun'];
+const DAY_LABELS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const DAYS=DAY_KEYS.map((k,i)=>{const date=addDays(WEEK_MON,i);return {l:DAY_LABELS[i],d:fmt(date),k,date};});
+const WEEK_END=addDays(WEEK_MON,6);
+const MN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function weekLabel(){const sm=MN[WEEK_MON.getMonth()],em=MN[WEEK_END.getMonth()];const sy=WEEK_MON.getFullYear(),ey=WEEK_END.getFullYear();if(sm===em&&sy===ey)return sm+' '+WEEK_MON.getDate()+'–'+WEEK_END.getDate()+', '+sy;return sm+' '+WEEK_MON.getDate()+' – '+em+' '+WEEK_END.getDate()+', '+ey;}
+document.getElementById('week-label').textContent=weekLabel();
+
+// ---------- state ----------
+let avail={};         // avail[name][dayKey] = true(available) | false(blacked out)
+let onlyShifts={};    // name -> [shiftKeys]  (shift-only limit)
+let pairs=[];         // [[a,b], ...]  can't work same shift same day
+let flags=[];
+let schedule={};      // schedule[name][dayKey] = shiftKey|'off'
+let people=[];        // guards in the current schedule output
+let seed=1;
+
+function initAvail(){avail={};GUARDS.forEach(g=>{avail[g]={};DAYS.forEach(d=>avail[g][d.k]=true);});}
+
+// ---------- STEP 1: analyze ----------
+async function analyze(){
+  const text=document.getElementById('comments').value.trim();
+  if(!text){manualStart();return;}
+  const btn=document.getElementById('analyze-btn');btn.disabled=true;
+  const st=document.getElementById('analyze-status');
+  st.innerHTML='<div class="alert alert-info pulse">✦ Reading the texts…</div>';
+  let usedAI=true,parsed;
+  try{
+    const r=await fetch('/api/parse',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({comments:text,roster:GUARDS,shifts:SHIFTS.map(s=>({key:s.key,label:s.label,time:s.time})),days:DAY_KEYS})});
+    if(!r.ok)throw new Error('api '+r.status);
+    parsed=normalize(await r.json());
+  }catch(e){usedAI=false;parsed=localParse(text);}
+  seedFromParsed(parsed);
+  btn.disabled=false;btn.innerHTML='✦ Re-read the texts';
+  const n=parsed.guards.length;
+  st.innerHTML=usedAI
+    ?'<div class="alert alert-success">✓ Read '+n+' '+(n===1?'person':'people')+'. Check the calendar below and adjust anything.</div>'
+    :'<div class="alert alert-warn">⚠ AI unavailable — used the built-in reader. Double-check the calendar below.</div>';
+  showBoards();
+  saveState();
+}
+
+function manualStart(){
+  initAvail();onlyShifts={};pairs=[];flags=[];
+  document.getElementById('analyze-status').innerHTML='<div class="alert alert-info">Blank calendar ready — tap boxes to black out who can\'t work.</div>';
+  showBoards();
+}
+
+function showBoards(){
+  renderExtras();renderAvail();buildCfg();
+  document.getElementById('avail-card').style.display='block';
+  document.getElementById('gen-card').style.display='block';
+}
+
+function seedFromParsed(parsed){
+  initAvail();onlyShifts={};pairs=parsed.pairs.slice();flags=parsed.flags.slice();
+  parsed.guards.forEach(g=>{
+    if(!avail[g.name])return; // off-roster names are just flagged, not scheduled
+    g.daysOff.forEach(d=>{avail[g.name][d]=false;});
+    if(g.onlyShifts)onlyShifts[g.name]=g.onlyShifts;
+  });
+}
+
+// Coerce AI response into canonical shape + match names/shifts to roster
+function normalize(res){
+  const byFirst={};GUARDS.forEach(g=>{const f=g.split(' ')[0].toLowerCase();(byFirst[f]=byFirst[f]||[]).push(g);});
+  const match=(nm)=>{if(!nm)return null;const exact=GUARDS.find(g=>g.toLowerCase()===nm.toLowerCase());if(exact)return exact;
+    const f=nm.split(' ')[0].toLowerCase();if(byFirst[f]&&byFirst[f].length===1)return byFirst[f][0];
+    const c=GUARDS.find(g=>g.toLowerCase().startsWith(f));return c||nm;};
+  const fl=Array.isArray(res.flags)?res.flags.slice():[];
+  const guards=(res.guards||[]).map(g=>{
+    const name=match(g.name);
+    const os=Array.isArray(g.onlyShifts)&&g.onlyShifts.length?g.onlyShifts.filter(s=>SHIFT_KEYS.includes(s)):null;
+    const daysOff=Array.isArray(g.daysOff)?g.daysOff.filter(d=>DAY_KEYS.includes(d)):[];
+    if(!GUARDS.includes(name))fl.push('Not on the roster: "'+g.name+'" — ignored');
+    return {name,daysOff,onlyShifts:os,raw:g.raw||''};
+  });
+  const pr=(res.pairs||[]).map(p=>[match(p[0]),match(p[1])]).filter(p=>p[0]&&p[1]&&p[0]!==p[1]);
+  return {guards,pairs:pr,flags:fl};
+}
+
+// ---------- built-in fallback parser (no AI) ----------
+function localParse(text){
+  const byFirst={};GUARDS.forEach(g=>{const f=g.split(' ')[0].toLowerCase();(byFirst[f]=byFirst[f]||[]).push(g);});
+  const lev=(a,b)=>{const m=a.length,n=b.length;const dp=Array.from({length:m+1},(_,i)=>[i,...Array(n).fill(0)]);for(let j=0;j<=n;j++)dp[0][j]=j;for(let i=1;i<=m;i++)for(let j=1;j<=n;j++)dp[i][j]=Math.min(dp[i-1][j]+1,dp[i][j-1]+1,dp[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return dp[m][n];};
+  const firsts=[...new Set(GUARDS.map(g=>g.split(' ')[0].toLowerCase()))];
+  const findName=(tok)=>{if(!tok)return null;const t=tok.toLowerCase().replace(/[^a-z]/g,'');if(!t)return null;
+    if(byFirst[t]&&byFirst[t].length===1)return byFirst[t][0];
+    let c=GUARDS.find(g=>g.split(' ')[0].toLowerCase()===t);if(c)return c;
+    c=GUARDS.find(g=>g.split(' ')[0].toLowerCase().startsWith(t.slice(0,4)));if(c)return c;
+    let near=firsts.filter(f=>lev(f,t)<=1);
+    if(near.length>1){const same=near.filter(f=>f.length===t.length);if(same.length===1)near=same;}
+    if(near.length===1&&byFirst[near[0]].length===1)return byFirst[near[0]][0];
+    return null;};
+  const dayWord={monday:'mon',mon:'mon',tuesday:'tue',tues:'tue',tue:'tue',wednesday:'wed',wed:'wed',thursday:'thu',thurs:'thu',thu:'thu',friday:'fri',fri:'fri',saturday:'sat',sat:'sat',sunday:'sun',sun:'sun'};
+  const shiftWord={morning:'morning',mornings:'morning',am:'morning',early:'early',opening:'early',open:'early',mid:'mid',midday:'mid',afternoon:'late',afternoons:'late',evening:'late',evenings:'late',night:'late',close:'late',closing:'late',late:'late',pm:'late'};
+  const fl=[];const guards=[];const pr=[];
+  const lines=text.split(/\n|(?<=[.!])\s+/).map(l=>l.trim()).filter(Boolean);
+  lines.forEach(line=>{
+    const low=line.toLowerCase();
+    const pm=low.match(/([a-z]+)\s+and\s+([a-z]+).*(can'?t|never|cannot|not).*(together|same shift|same day)/);
+    if(pm){const a=findName(pm[1]),b=findName(pm[2]);if(a&&b)pr.push([a,b]);else fl.push('Pairing rule with a name I couldn\'t match: "'+line+'"');return;}
+    const nm=line.match(/^\s*([A-Za-z]+)\s*[:\-–]/)||line.match(/^\s*([A-Za-z]+)\b/);
+    const name=nm?findName(nm[1].replace(/[^A-Za-z]/g,'')):null;
+    if(!name)return;
+    let os=null;const daysOff=[];
+    if(/only|just/.test(low)){for(const w in shiftWord){if(low.includes(w)){os=os||[];if(!os.includes(shiftWord[w]))os.push(shiftWord[w]);}}}
+    if(/(can'?t|cannot|off|out|unavailable|no|not available|busy)/.test(low)){
+      for(const w in dayWord){if(new RegExp('\\b'+w+'\\b').test(low))if(!daysOff.includes(dayWord[w]))daysOff.push(dayWord[w]);}
+      if(/\bweekends?\b/.test(low))['sat','sun'].forEach(d=>{if(!daysOff.includes(d))daysOff.push(d);});
+      if(/\bweekdays?\b/.test(low))['mon','tue','wed','thu','fri'].forEach(d=>{if(!daysOff.includes(d))daysOff.push(d);});
+    }
+    guards.push({name,daysOff,onlyShifts:os&&os.length?os:null,raw:line});
+  });
+  return {guards,pairs:pr,flags:fl};
+}
+
+// ---------- render: AI extras (pairs, shift limits, flags) ----------
+function renderExtras(){
+  const eb=document.getElementById('extras-box');let html='';
+  if(pairs.length)html+='<div style="margin-bottom:8px;">'+pairs.map(p=>'<span class="pair-rule">⊘ '+p[0].split(' ')[0]+' &amp; '+p[1].split(' ')[0]+' — never the same shift</span>').join('')+'</div>';
+  eb.innerHTML=html;
+  document.getElementById('flags-box').innerHTML=flags.length?'<div class="alert alert-warn" style="margin-top:12px;">'+flags.map(esc).join('<br>')+'</div>':'';
+}
+function esc(s){return String(s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));}
+
+// ---------- render: availability calendar ----------
+function renderAvail(){
+  let html='<thead><tr><th>Guard</th>'+DAYS.map(d=>'<th>'+d.l+'<br><span style="font-weight:400;opacity:.6">'+d.d+'</span></th>').join('')+'</tr></thead><tbody>';
+  GUARDS.forEach(g=>{
+    const lim=onlyShifts[g]?'<span class="tag">'+onlyShifts[g].map(s=>SHIFT_BY[s].label).join('/')+' only</span>':'';
+    html+='<tr><td class="name">'+g+lim+' <small onclick="toggleRow(\''+g.replace(/'/g,"\\'")+'\')">week off</small></td>';
+    DAYS.forEach(d=>{const on=avail[g][d.k];html+='<td class="cell '+(on?'on':'off')+'" onclick="toggleCell(\''+g.replace(/'/g,"\\'")+'\',\''+d.k+'\')">'+(on?'·':'✕')+'</td>';});
+    html+='</tr>';
+  });
+  document.getElementById('avail-table').innerHTML=html+'</tbody>';
+}
+function toggleCell(g,k){avail[g][k]=!avail[g][k];renderAvail();saveState();}
+function toggleRow(g){const anyOn=DAYS.some(d=>avail[g][d.k]);DAYS.forEach(d=>avail[g][d.k]=!anyOn);renderAvail();saveState();}
+
+// ---------- coverage config ----------
+function buildCfg(){
+  document.getElementById('cfg-shifts').innerHTML=SHIFTS.map(s=>
+    '<div><label><span class="badge '+s.cls+'">'+s.label+' '+s.time+'</span>'+(s.days.length<7?' <span style="color:var(--faint);text-transform:none;">Mon/Wed/Fri only</span>':'')+'</label>'+
+    '<input type="number" id="need-'+s.key+'" value="'+s.need+'" min="0" max="20"></div>').join('');
+}
+
+// ---------- STEP 3: solver ----------
+function rng(){seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff;}
+function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+
+function generate(){
+  const maxShifts=Math.max(1,parseInt(document.getElementById('max-shifts').value)||5);
+  const needs={};SHIFTS.forEach(s=>needs[s.key]=Math.max(0,parseInt(document.getElementById('need-'+s.key).value)||0));
+  const partner={};pairs.forEach(([a,b])=>{(partner[a]=partner[a]||[]).push(b);(partner[b]=partner[b]||[]).push(a);});
+
+  // only guards with at least one available day are in play
+  people=GUARDS.filter(g=>DAYS.some(d=>avail[g][d.k]));
+  if(!people.length){alert('Everyone is blacked out — mark some availability first.');return;}
+  const total={};people.forEach(p=>total[p]=0);
+  const perShift={};people.forEach(p=>{perShift[p]={};SHIFT_KEYS.forEach(k=>perShift[p][k]=0);});
+  schedule={};people.forEach(p=>{schedule[p]={};DAYS.forEach(d=>schedule[p][d.k]='off');});
+
+  const can=(p,k,day)=>avail[p][day.k]&&!(onlyShifts[p]&&!onlyShifts[p].includes(k));
+  const eligibleCount=(k,day)=>people.filter(p=>can(p,k,day)).length;
+
+  const shortages=[];
+  DAYS.forEach(day=>{
+    const assignedToday={};
+    const order=SHIFTS.slice().sort((a,b)=>eligibleCount(a.key,day)-eligibleCount(b.key,day));
+    order.forEach(shift=>{
+      if(!shift.days.includes(day.k))return; // e.g. early 5:45AM exists Mon/Wed/Fri only
+      const k=shift.key;let filled=0;
+      let pool=people.filter(p=>can(p,k,day)&&!assignedToday[p]&&total[p]<maxShifts);
+      pool=shuffle(pool).sort((a,b)=>(total[a]-total[b])||(perShift[a][k]-perShift[b][k]));
+      for(const p of pool){
+        if(filled>=needs[k])break;
+        if((partner[p]||[]).some(q=>assignedToday[q]===k))continue; // pairwise: not same shift same day
+        schedule[p][day.k]=k;assignedToday[p]=k;total[p]++;perShift[p][k]++;filled++;
+      }
+      if(filled<needs[k])shortages.push(day.l+' '+shift.label+': '+filled+'/'+needs[k]);
+    });
+  });
+  renderSchedule(shortages,total);
+  showOutputButtons();
+  saveState();
+}
+function reshuffle(){seed=Math.floor(Math.random()*1e9)+1;generate();}
+function showOutputButtons(){
+  ['reshuffle-btn','png-btn','export-btn'].forEach(id=>document.getElementById(id).style.display='inline-flex');
+  document.getElementById('gen-btn').innerHTML='📅 Regenerate';
+}
+
+// ---------- schedule output ----------
+function renderSchedule(shortages,total){
+  const filledN=Object.values(total).reduce((a,b)=>a+b,0);
+  document.getElementById('stats').innerHTML=
+    '<div class="stat"><div class="stat-n">'+people.length+'</div><div class="stat-l">Guards in play</div></div>'+
+    '<div class="stat"><div class="stat-n">'+filledN+'</div><div class="stat-l">Shifts filled</div></div>'+
+    '<div class="stat"><div class="stat-n" style="color:'+(shortages.length?'var(--red)':'var(--green)')+'">'+shortages.length+'</div><div class="stat-l">Shortages</div></div>';
+  document.getElementById('legend').innerHTML='<strong style="color:var(--text)">Shifts:</strong>'+SHIFTS.map(s=>'<span><span class="sw" style="background:'+s.sheet+'"></span>'+s.time+(s.days.length<7?' (M/W/F)':'')+'</span>').join(' ')+'<span><span class="sw" style="background:#000"></span>can\'t work</span>';
+  document.getElementById('gen-status').innerHTML=shortages.length
+    ?'<div class="alert alert-warn" style="margin-top:14px;">⚠ Not enough available guards for: '+shortages.join(' · ')+'. Un-black-out more people or lower the coverage.</div>'
+    :'<div class="alert alert-success" style="margin-top:14px;">✓ Every shift covered. Tap a cell to tweak, then export.</div>';
+  drawSchedTable();
+  document.getElementById('grid-section').style.display='block';
+}
+const DAY_FULL=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+function drawSchedTable(){
+  let html='<thead><tr><th>Lifeguards:</th>'+DAYS.map((d,i)=>'<th>'+DAY_FULL[i]+': '+d.d+'</th>').join('')+'</tr></thead><tbody>';
+  GUARDS.forEach(g=>{
+    html+='<tr><td class="name">'+g+'</td>';
+    DAYS.forEach(d=>{
+      if(!avail[g][d.k]){html+='<td class="cell c-black"></td>';return;}   // blacked out, like her sheet
+      const v=schedule[g]?schedule[g][d.k]:'off';
+      const s=v&&v!=='off'?SHIFT_BY[v]:null;
+      html+='<td class="cell'+(s?' c-'+s.key:'')+'" onclick="openEdit(\''+g.replace(/'/g,"\\'")+'\',\''+d.k+'\')">'+(s?s.time:'')+'</td>';
+    });
+    html+='</tr>';
+  });
+  document.getElementById('sched-table').innerHTML=html+'</tbody>';
+}
+function openEdit(guard,dayKey){
+  const cur=schedule[guard][dayKey];const day=DAYS.find(d=>d.k===dayKey);
+  const m=document.getElementById('edit-modal');m.style.display='block';
+  const opts=[{k:'off',label:'Off'},...SHIFTS.map(s=>({k:s.key,label:s.label+' '+s.time}))];
+  m.innerHTML='<div class="modal-bg" onclick="closeEdit(event)"><div class="modal">'+
+    '<h3>'+guard.split(' ')[0]+' · '+day.l+' '+day.d+'</h3>'+
+    opts.map(o=>'<button class="opt" onclick="saveEdit(\''+guard.replace(/'/g,"\\'")+'\',\''+dayKey+'\',\''+o.k+'\')">'+(o.k===cur?'✓ ':'')+o.label+'</button>').join('')+
+    '</div></div>';
+}
+function closeEdit(e){if(e&&e.target!==e.currentTarget)return;document.getElementById('edit-modal').style.display='none';}
+function saveEdit(guard,dayKey,val){schedule[guard][dayKey]=val;document.getElementById('edit-modal').style.display='none';drawSchedTable();saveState();}
+
+// ---------- download as image (draws the sheet on a canvas — full width, nothing cut off) ----------
+function downloadPNG(){
+  if(!Object.keys(schedule).length){alert('Generate first.');return;}
+  const S=2,nameW=175,dayW=120,rowH=32,headH=38;
+  const W=nameW+dayW*7,H=headH+rowH*GUARDS.length;
+  const c=document.createElement('canvas');c.width=W*S;c.height=H*S;
+  const x=c.getContext('2d');x.scale(S,S);
+  x.fillStyle='#fff';x.fillRect(0,0,W,H);
+  x.textBaseline='middle';
+  // header row
+  x.font='600 12px "DM Sans",Arial,sans-serif';x.fillStyle='#111';
+  x.fillText('Lifeguards:',8,headH/2);
+  DAYS.forEach((d,i)=>x.fillText(DAY_FULL[i]+': '+d.d,nameW+dayW*i+8,headH/2));
+  // rows
+  GUARDS.forEach((g,r)=>{
+    const y=headH+r*rowH;
+    DAYS.forEach((d,ci)=>{
+      const cx=nameW+dayW*ci;
+      if(!avail[g][d.k]){x.fillStyle='#000';x.fillRect(cx,y,dayW,rowH);return;}
+      const v=schedule[g]?schedule[g][d.k]:'off';
+      if(v&&v!=='off'){const s=SHIFT_BY[v];x.fillStyle=s.sheet;x.fillRect(cx,y,dayW,rowH);
+        x.fillStyle='#111';x.font='500 11.5px "DM Sans",Arial,sans-serif';x.fillText(s.time,cx+8,y+rowH/2);}
+    });
+    x.fillStyle='#111';x.font='500 12px "DM Sans",Arial,sans-serif';x.fillText(g,8,y+rowH/2);
+  });
+  // grid lines
+  x.strokeStyle='#d9d9d9';x.lineWidth=1;
+  for(let r=0;r<=GUARDS.length+0;r++){const y=headH+r*rowH;x.beginPath();x.moveTo(0,y+0.5);x.lineTo(W,y+0.5);x.stroke();}
+  x.beginPath();x.moveTo(0,0.5);x.lineTo(W,0.5);x.stroke();
+  for(let ci=0;ci<=7;ci++){const gx=(ci===0?nameW:nameW+dayW*ci);x.beginPath();x.moveTo(gx-(ci===7?0.5:-0.5),0);x.lineTo(gx-(ci===7?0.5:-0.5),H);x.stroke();}
+  const url=c.toDataURL('image/png');window.__pngData=url;
+  const a=document.createElement('a');a.href=url;
+  a.download='schedule_'+WEEK_TAG+'.png';a.click();
+}
+
+// ---------- persistence (auto-saves to this browser, per week) ----------
+const WEEK_TAG=WEEK_MON.getFullYear()+String(WEEK_MON.getMonth()+1).padStart(2,'0')+String(WEEK_MON.getDate()).padStart(2,'0');
+const STORE_KEY='gs_state_'+WEEK_TAG;
+function saveState(){
+  try{
+    const needs={};SHIFTS.forEach(s=>{const el=document.getElementById('need-'+s.key);needs[s.key]=el?el.value:s.need;});
+    localStorage.setItem(STORE_KEY,JSON.stringify({
+      comments:document.getElementById('comments').value,
+      avail,onlyShifts,pairs,flags,schedule,people,needs,
+      maxShifts:document.getElementById('max-shifts').value,savedAt:Date.now()}));
+  }catch(e){}
+}
+function recalcAndRender(){
+  const needs={};SHIFTS.forEach(s=>{const el=document.getElementById('need-'+s.key);needs[s.key]=Math.max(0,parseInt(el?el.value:s.need)||0);});
+  const total={};people.forEach(p=>total[p]=DAY_KEYS.filter(d=>schedule[p]&&schedule[p][d]!=='off').length);
+  const shortages=[];
+  DAYS.forEach(day=>SHIFTS.forEach(sh=>{if(!sh.days.includes(day.k))return;
+    const n=people.filter(p=>schedule[p]&&schedule[p][day.k]===sh.key).length;
+    if(n<needs[sh.key])shortages.push(day.l+' '+sh.label+': '+n+'/'+needs[sh.key]);}));
+  renderSchedule(shortages,total);
+}
+function loadStateSaved(){
+  try{
+    const raw=localStorage.getItem(STORE_KEY);if(!raw)return false;
+    const s=JSON.parse(raw);
+    document.getElementById('comments').value=s.comments||'';
+    avail=s.avail||{};onlyShifts=s.onlyShifts||{};pairs=s.pairs||[];flags=s.flags||[];
+    schedule=s.schedule||{};people=s.people||[];
+    GUARDS.forEach(g=>{if(!avail[g]){avail[g]={};DAYS.forEach(d=>avail[g][d.k]=true);}});
+    showBoards();
+    SHIFTS.forEach(sh=>{const el=document.getElementById('need-'+sh.key);if(el&&s.needs&&s.needs[sh.key]!=null)el.value=s.needs[sh.key];});
+    if(s.maxShifts)document.getElementById('max-shifts').value=s.maxShifts;
+    if(people.length&&Object.keys(schedule).length){recalcAndRender();showOutputButtons();}
+    document.getElementById('analyze-status').innerHTML='<div class="alert alert-success">✓ Restored your saved week — everything\'s still here.</div>';
+    return true;
+  }catch(e){return false;}
+}
+// auto-save triggers
+document.addEventListener('change',e=>{if(e.target.closest('#gen-card'))saveState();});
+let __ct;document.getElementById('comments').addEventListener('input',()=>{clearTimeout(__ct);__ct=setTimeout(saveState,600);});
+
+// ---------- export ----------
+function exportCSV(){
+  if(!people.length){alert('Generate first.');return;}
+  let csv='Lifeguards:,'+DAYS.map((d,i)=>DAY_FULL[i]+': '+d.d).join(',')+'\n';
+  GUARDS.forEach(n=>{csv+='"'+n+'",'+DAYS.map(d=>{if(!avail[n][d.k])return 'X';const v=schedule[n]?schedule[n][d.k]:'off';return v&&v!=='off'?SHIFT_BY[v].time:'';}).join(',')+'\n';});
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='schedule_'+WEEK_TAG+'.csv';a.click();
+}
+
+// restore last saved state for this week, if any
+loadStateSaved();
+</script>
+</body>
+</html>

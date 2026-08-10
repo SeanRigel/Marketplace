@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lead Scout — find businesses without websites</title>
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0e14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lead Scout">
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #131722;
+    --panel2: #1a1f2e;
+    --border: #252b3b;
+    --text: #e8ecf4;
+    --muted: #8b94a7;
+    --accent: #4f8cff;
+    --hot: #ff5c7a;
+    --warm: #ffb84f;
+    --ok: #3ecf8e;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 80px; }
+  header { margin-bottom: 24px; }
+  h1 { font-size: 26px; letter-spacing: -0.5px; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); margin-top: 6px; font-size: 14px; line-height: 1.5; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 18px;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  input[type=text] {
+    flex: 1; min-width: 220px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-size: 15px;
+    outline: none;
+  }
+  input[type=text]:focus { border-color: var(--accent); }
+  select {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 10px;
+    color: var(--text);
+    font-size: 14px;
+  }
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(1.1); }
+  button.ghost {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-weight: 500;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .chip {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+  }
+  .chip.on { background: rgba(79,140,255,0.15); border-color: var(--accent); color: var(--accent); }
+
+  .status { color: var(--muted); font-size: 14px; margin: 10px 2px 0; min-height: 20px; }
+  .status.err { color: var(--hot); }
+  .status button { margin-left: 8px; padding: 5px 12px; font-size: 13px; }
+  .progress {
+    height: 4px; border-radius: 2px; background: var(--panel2);
+    margin-top: 10px; overflow: hidden; display: none;
+  }
+  .progress .bar {
+    height: 100%; width: 30%; border-radius: 2px; background: var(--accent);
+    animation: slide 1.2s ease-in-out infinite;
+  }
+  @keyframes slide { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+
+  details.settings { margin-top: 14px; }
+  details.settings summary { font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
+  details.settings textarea {
+    width: 100%; margin-top: 10px; min-height: 90px; resize: vertical;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; color: var(--text); font-size: 13px; font-family: inherit; line-height: 1.5;
+  }
+
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .stat {
+    flex: 1; min-width: 120px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+  }
+  .stat .n { font-size: 26px; font-weight: 700; }
+  .stat .l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .stat.hot .n { color: var(--hot); }
+  .stat.warm .n { color: var(--warm); }
+  .stat.ok .n { color: var(--ok); }
+
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tab {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 999px;
+    padding: 7px 14px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none;
+  }
+  .tab.on { background: rgba(79,140,255,0.15); border-color: var(--accent); color: var(--accent); }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-bottom: 10px;
+  }
+  .card.hot { border-left: 3px solid var(--hot); }
+  .card.warm { border-left: 3px solid var(--warm); }
+  .card.done { opacity: 0.55; }
+  .card .top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .card h3 { font-size: 17px; }
+  .badge {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+    padding: 3px 9px; border-radius: 999px; text-transform: uppercase;
+  }
+  .badge.hot { background: rgba(255,92,122,0.15); color: var(--hot); }
+  .badge.warm { background: rgba(255,184,79,0.15); color: var(--warm); }
+  .badge.ok { background: rgba(62,207,142,0.15); color: var(--ok); }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 6px; line-height: 1.6; }
+  .meta b { color: var(--text); font-weight: 600; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+  .actions a, .actions button {
+    font-size: 13px; padding: 7px 12px; border-radius: 8px;
+    background: var(--panel2); border: 1px solid var(--border);
+    color: var(--text); text-decoration: none; font-weight: 500; cursor: pointer;
+  }
+  .actions a:hover, .actions button:hover { border-color: var(--accent); }
+  .actions select {
+    font-size: 13px; padding: 7px 8px; border-radius: 8px;
+  }
+  .note {
+    width: 100%; margin-top: 10px;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; color: var(--text); font-size: 13px; outline: none;
+  }
+  .note::placeholder { color: #565f73; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+  .spin { display: inline-block; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .offergrid { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .offergrid input {
+    flex: 1; min-width: 150px;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; color: var(--text); font-size: 13px;
+  }
+  .outreach { display: none; margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+  .obtabs { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+  .obtab {
+    font-size: 12px; padding: 5px 11px; border-radius: 999px;
+    background: var(--panel2); border: 1px solid var(--border); color: var(--muted); cursor: pointer; user-select: none;
+  }
+  .obtab.on { background: rgba(79,140,255,0.15); border-color: var(--accent); color: var(--accent); }
+  .obtext {
+    width: 100%; min-height: 158px; resize: vertical;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; color: var(--text); font-size: 13px; line-height: 1.55; font-family: inherit;
+  }
+  .obactions { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .obactions .send {
+    font-size: 13px; padding: 7px 12px; border-radius: 8px;
+    background: rgba(62,207,142,0.15); border: 1px solid var(--ok); color: var(--ok);
+    text-decoration: none; font-weight: 600;
+  }
+  .obactions .nosend { font-size: 12px; color: var(--muted); }
+
+  .keyhint { font-size: 12px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+  .keyhint a { color: var(--accent); }
+  .obai { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .aibtn {
+    font-size: 13px; padding: 8px 13px; border-radius: 8px; cursor: pointer; font-weight: 600;
+    color: #fff; border: none;
+    background: linear-gradient(120deg, #7c5cff, #4f8cff);
+  }
+  .aibtn:hover { filter: brightness(1.08); }
+  .aibtn:disabled { opacity: 0.6; cursor: default; filter: none; }
+  .oberr { font-size: 12.5px; color: var(--hot); margin-top: 8px; line-height: 1.5; display: none; }
+  .oberr.on { display: block; }
+  .oberr a { color: var(--accent); cursor: pointer; text-decoration: underline; }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 50; background: rgba(6,8,13,0.82);
+    display: none; flex-direction: column; padding: 16px;
+  }
+  .overlay.on { display: flex; }
+  .overlay .obar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .overlay .obar .ttl { color: var(--text); font-weight: 600; margin-right: auto; font-size: 15px; }
+  .overlay iframe {
+    flex: 1; width: 100%; border: 1px solid var(--border); border-radius: 12px; background: #fff;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🎯 Lead <span>Scout</span></h1>
+    <div class="sub">Find local businesses with <b>no website</b> — your best prospects for pitching a site build. Free data from OpenStreetMap, no API keys.</div>
+  </header>
+
+  <div class="panel">
+    <div class="row">
+      <input type="text" id="place" placeholder="City or neighborhood (e.g. Pasadena, CA)" onkeydown="if(event.key==='Enter')scan()">
+      <select id="radius">
+        <option value="1500">1 mi radius</option>
+        <option value="3000" selected>2 mi radius</option>
+        <option value="5000">3 mi radius</option>
+        <option value="8000">5 mi radius</option>
+        <option value="16000">10 mi radius</option>
+      </select>
+      <button id="scanBtn" onclick="scan()">Scan</button>
+      <button class="ghost" onclick="useMyLocation()">📍 Near me</button>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="status" id="status"></div>
+    <div class="progress" id="progress"><div class="bar"></div></div>
+    <details class="settings">
+      <summary>⚙️ Your details — personalizes every outreach message (saved on this computer)</summary>
+      <div class="offergrid">
+        <input type="text" id="o_name" placeholder="Your name (e.g. Rigel)" onchange="saveOffer()">
+        <input type="text" id="o_contact" placeholder="Your email or phone — shown in the sign-off" onchange="saveOffer()">
+        <input type="text" id="o_turn" placeholder="Turnaround (default: a few days)" onchange="saveOffer()">
+      </div>
+    </details>
+    <details class="settings">
+      <summary>🤖 AI writing & instant preview sites (optional — needs your Anthropic API key)</summary>
+      <div class="offergrid">
+        <input type="password" id="o_key" placeholder="Anthropic API key (sk-ant-…)" autocomplete="off" onchange="saveKey()">
+        <select id="o_model" onchange="saveModel()">
+          <option value="claude-opus-4-8">Best quality — Opus 4.8</option>
+          <option value="claude-sonnet-5">Balanced — Sonnet 5</option>
+          <option value="claude-haiku-4-5">Cheapest — Haiku 4.5</option>
+        </select>
+      </div>
+      <div class="keyhint">🔒 Your key stays in this browser and is sent straight to Anthropic — no server in between. <b>Set a spend limit in your Anthropic console first</b>, and never share this HTML file with your key saved in it. <a href="https://console.anthropic.com/settings/limits" target="_blank">Set spend limits →</a></div>
+    </details>
+  </div>
+
+  <div class="stats" id="stats" style="display:none">
+    <div class="stat hot"><div class="n" id="nHot">0</div><div class="l">🔥 Hot — no site + phone</div></div>
+    <div class="stat warm"><div class="n" id="nWarm">0</div><div class="l">Social-only / no contact</div></div>
+    <div class="stat ok"><div class="n" id="nContacted">0</div><div class="l">Contacted</div></div>
+    <div class="stat"><div class="n" id="nTotal">0</div><div class="l">Businesses scanned</div></div>
+  </div>
+
+  <div class="tabs" id="tabs" style="display:none"></div>
+
+  <div class="toolbar" id="toolbar" style="display:none">
+    <div style="font-size:14px;color:var(--muted)" id="resultLabel"></div>
+    <div class="row">
+      <input type="text" id="filterText" placeholder="Filter by name…" style="min-width:160px;padding:8px 12px;font-size:13px" oninput="render()">
+      <button class="ghost" onclick="exportCSV()">⬇ Export CSV</button>
+    </div>
+  </div>
+  <div id="results"></div>
+  <div class="overlay" id="overlay">
+    <div class="obar">
+      <span class="ttl" id="ovTitle">Preview</span>
+      <button class="ghost" onclick="downloadPreview()">⬇ Download HTML</button>
+      <button onclick="closePreview()">✕ Close</button>
+    </div>
+    <iframe id="ovFrame" sandbox="allow-same-origin"></iframe>
+  </div>
+
+  <div class="hint" id="footHint" style="display:none">
+    ⚠️ OpenStreetMap data isn't perfect — some flagged businesses may actually have a website that just isn't listed here. Use the <b>Google</b> button on each lead to double-check before reaching out. "Social only" leads (Facebook/Instagram but no real site) are often the easiest sell. Your statuses and notes save automatically on this computer.
+  </div>
+</div>
+
+<script>
+// mail.ru first: overpass-api.de's abuse filter 406-blocks localhost origins, and other mirrors flake
+const SERVERS = [
+  { url: 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', name: 'vk' },
+  { url: 'https://overpass.kumi.systems/api/interpreter', name: 'kumi' },
+  { url: 'https://overpass.private.coffee/api/interpreter', name: 'coffee' },
+  { url: 'https://overpass-api.de/api/interpreter', name: 'main' },
+];
+const CATS = [
+  { id: 'food',    label: '🍕 Food & drink', on: true,  q: '["amenity"~"^(restaurant|cafe|fast_food|bar|pub|ice_cream|bakery)$"]' },
+  { id: 'beauty',  label: '💇 Hair & beauty', on: true,  q: '["shop"~"^(hairdresser|beauty|tattoo|massage)$"]' },
+  { id: 'shops',   label: '🛍 Retail shops',  on: true,  q: '["shop"~"^(clothes|convenience|florist|gift|jewelry|shoes|furniture|pet|toys|books|butcher|greengrocer|deli|bicycle)$"]' },
+  { id: 'auto',    label: '🔧 Auto services', on: false, q: '["shop"~"^(car_repair|tyres|car_parts)$"]' },
+  { id: 'trades',  label: '🏗 Trades & craft', on: false, q: '["craft"]' },
+  { id: 'fitness', label: '💪 Fitness',       on: false, q: '["leisure"~"^(fitness_centre|dance)$"]' },
+];
+const STATUSES = ['new', 'contacted', 'replied', 'won', 'dead'];
+const STATUS_LABELS = { new: '— status —', contacted: '✉️ Contacted', replied: '💬 Replied', won: '✅ Won', dead: '✖ Not interested' };
+
+// Pick a value proposition tailored to the kind of business
+function valueProp(type) {
+  const t = (type || '').toLowerCase();
+  const map = [
+    [/rest|food|cafe|bakery|deli|butcher|greengroc|ice/, 'show your menu and hours, and even take orders online'],
+    [/bar|pub/, 'list your hours, events, and menu so regulars and newcomers can find you'],
+    [/hair|beaut|nail|salon|massage|tattoo|dance|fitness|spa/, 'let clients book appointments online and see your work'],
+    [/car|tyre|tire|repair|auto|parts/, 'take quote requests and show your services, prices, and hours'],
+    [/craft|plumb|electric|build|trade|carpen|paint|roof/, 'take quote requests and show a gallery of your past jobs'],
+    [/cloth|shoe|jewel|gift|florist|book|toy|pet|furnitur|bike|bicycle|convenience/, 'showcase your products, hours, and location'],
+  ];
+  for (const [re, v] of map) if (re.test(t)) return v;
+  return 'help customers find your hours, location, and what you offer';
+}
+
+// Read the user's own details, used to sign and personalize every message
+function offer() {
+  return {
+    name: (document.getElementById('o_name')?.value || '').trim(),
+    contact: (document.getElementById('o_contact')?.value || '').trim(),
+    turn: (document.getElementById('o_turn')?.value || '').trim() || 'a few days',
+  };
+}
+function saveOffer() {
+  localStorage.setItem('ls_offer', JSON.stringify({
+    name: document.getElementById('o_name').value,
+    contact: document.getElementById('o_contact').value,
+    turn: document.getElementById('o_turn').value,
+  }));
+}
+
+// Build channel-specific outreach drafts for one lead
+function buildOutreach(x) {
+  const o = offer();
+  const vp = valueProp(x.type);
+  const found = x.tier === 'social'
+    ? `I came across ${x.name} on social media but couldn't find a website for you`
+    : `I was looking for ${x.name} online and noticed you don't seem to have a website yet`;
+  const sign = o.name ? ('\n\n– ' + o.name + (o.contact ? '\n' + o.contact : '')) : '';
+  const tag = o.name ? (' – ' + o.name) : '';
+  const subj = 'A website for ' + x.name + '?';
+
+  const email =
+`Subject: ${subj}
+
+Hi ${x.name} team,
+
+${found}. These days most people check online before they visit, so a simple website could ${vp} — and help you show up when they search.
+
+I build clean, affordable websites for local businesses and could have one live in ${o.turn}. Happy to send over a free mockup so you can see exactly what it'd look like — no obligation either way.
+
+Would that be useful?${sign}`;
+
+  const sms =
+`Hi! ${found.replace(x.name, 'you')}. I build simple websites for local businesses — I could ${vp}, live in ${o.turn}. Want a free mockup, no obligation?${tag}`;
+
+  const script =
+`• Hi, is this ${x.name}? My name's ${o.name || '[your name]'} — I build websites for local businesses.
+• I noticed you don't have a website yet — is that right?
+• Most customers look online first, so a site could ${vp}.
+• I could have something live in ${o.turn}. Can I send you a free mockup to show what it'd look like?
+• Great — what's the best email to send it to?`;
+
+  return { email, sms, script };
+}
+
+const OBCACHE = {};
+let leads = [];
+let lastPlace = '';
+let currentTab = 'all';
+let meta = JSON.parse(localStorage.getItem('ls_meta') || '{}');
+
+const chipsEl = document.getElementById('chips');
+CATS.forEach(c => {
+  const el = document.createElement('div');
+  el.className = 'chip' + (c.on ? ' on' : '');
+  el.textContent = c.label;
+  el.onclick = () => { c.on = !c.on; el.classList.toggle('on', c.on); };
+  chipsEl.appendChild(el);
+});
+
+(function loadOffer() {
+  const o = JSON.parse(localStorage.getItem('ls_offer') || 'null');
+  if (o) {
+    document.getElementById('o_name').value = o.name || '';
+    document.getElementById('o_contact').value = o.contact || '';
+    document.getElementById('o_turn').value = o.turn || '';
+  }
+  document.getElementById('o_key').value = localStorage.getItem('ls_anthropic_key') || '';
+  document.getElementById('o_model').value = localStorage.getItem('ls_model') || 'claude-opus-4-8';
+})();
+function saveKey() { localStorage.setItem('ls_anthropic_key', document.getElementById('o_key').value.trim()); }
+function saveModel() { localStorage.setItem('ls_model', document.getElementById('o_model').value); }
+
+function leadKey(x) { return x.name + '|' + (+x.lat).toFixed(3) + ',' + (+x.lon).toFixed(3); }
+function saveMeta() { localStorage.setItem('ls_meta', JSON.stringify(meta)); }
+
+function setStatus(msg, err) {
+  const s = document.getElementById('status');
+  s.innerHTML = msg;
+  s.className = 'status' + (err ? ' err' : '');
+}
+function showProgress(on) { document.getElementById('progress').style.display = on ? 'block' : 'none'; }
+
+function useMyLocation() {
+  setStatus('<span class="spin">⏳</span> Getting your location…');
+  navigator.geolocation.getCurrentPosition(
+    pos => { lastPlace = 'My location'; runScan(pos.coords.latitude, pos.coords.longitude); },
+    () => setStatus('Location access denied — type a city instead.', true)
+  );
+}
+
+async function scan() {
+  const q = document.getElementById('place').value.trim();
+  if (!q) { setStatus('Type a city/neighborhood or hit 📍 Near me.', true); return; }
+  setStatus('<span class="spin">⏳</span> Finding "' + esc(q) + '"…');
+  try {
+    const r = await fetchTimeout('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q), {}, 15000);
+    const js = await r.json();
+    if (!js.length) { setStatus('Couldn\'t find that place — try adding the state.', true); return; }
+    lastPlace = js[0].display_name.split(',').slice(0, 2).join(',');
+    runScan(parseFloat(js[0].lat), parseFloat(js[0].lon));
+  } catch (e) {
+    setStatus('Couldn\'t look up that place (network hiccup). ' + retryBtn(), true);
+  }
+}
+
+function retryBtn() { return '<button onclick="scan()">↻ Retry</button>'; }
+
+function fetchTimeout(url, opts, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(t));
+}
+
+async function runScan(lat, lon) {
+  const radius = document.getElementById('radius').value;
+  const active = CATS.filter(c => c.on);
+  if (!active.length) { setStatus('Turn on at least one category.', true); return; }
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true;
+  showProgress(true);
+
+  const clauses = active.map(c => 'nwr["name"]' + c.q + '(around:' + radius + ',' + lat + ',' + lon + ');').join('\n');
+  const query = '[out:json][timeout:30];(\n' + clauses + '\n);out center tags;';
+
+  let lastErr = 'all servers busy';
+  for (let i = 0; i < SERVERS.length; i++) {
+    setStatus('<span class="spin">⏳</span> Scanning near ' + esc(lastPlace) + '… (server ' + (i + 1) + ' of ' + SERVERS.length + ')');
+    try {
+      const r = await fetchTimeout(SERVERS[i].url, {
+        method: 'POST',
+        body: 'data=' + encodeURIComponent(query),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      }, 35000);
+      if (!r.ok) throw new Error('server returned ' + r.status);
+      const js = await r.json();
+      process(js.elements || []);
+      btn.disabled = false;
+      showProgress(false);
+      return;
+    } catch (e) {
+      lastErr = e.name === 'AbortError' ? 'server too slow (timed out)' : e.message;
+    }
+  }
+  showProgress(false);
+  btn.disabled = false;
+  setStatus('All ' + SERVERS.length + ' map servers are busy right now (' + esc(lastErr) + '). These are free public servers — wait ~1 minute. ' + retryBtn(), true);
+}
+
+function process(elements) {
+  const seen = new Set();
+  const all = [];
+  for (const el of elements) {
+    const t = el.tags || {};
+    const key = (t.name || '').toLowerCase() + '|' + Math.round((el.lat || el.center?.lat || 0) * 500);
+    if (!t.name || seen.has(key)) continue;
+    seen.add(key);
+    if (t.brand || t['brand:wikidata']) continue; // chain stores — they have websites, just not listed in OSM
+
+    const website = t.website || t['contact:website'] || t.url;
+    const social = t['contact:facebook'] || t['contact:instagram'] || t.facebook || t.instagram;
+    const phone = t.phone || t['contact:phone'];
+    const email = t.email || t['contact:email'] || '';
+    const addr = [t['addr:housenumber'], t['addr:street']].filter(Boolean).join(' ')
+      || (t['addr:city'] ? t['addr:city'] : '');
+    const type = t.amenity || t.shop || t.craft || t.leisure || 'business';
+    const lat = el.lat || el.center?.lat, lon = el.lon || el.center?.lon;
+
+    let tier = 'has-site';
+    if (website) tier = 'has-site';
+    else if (phone || email) tier = 'hot';   // reachable by phone or email — best prospects
+    else if (social) tier = 'social';
+    else tier = 'nocontact';
+    all.push({ name: t.name, type: type.replace(/_/g, ' '), phone: phone || '', email, addr, tier, social: social || '', lat, lon });
+  }
+
+  leads = all.filter(x => x.tier !== 'has-site');
+  const rank = { hot: 0, social: 1, nocontact: 2 };
+  leads.sort((a, b) => rank[a.tier] - rank[b.tier] || a.name.localeCompare(b.name));
+  window.totalScanned = all.length;
+
+  localStorage.setItem('ls_last', JSON.stringify({ when: Date.now(), place: lastPlace, total: all.length, leads }));
+  setStatus(all.length ? '✅ Done — ' + leads.length + ' of ' + all.length + ' businesses have no website listed.'
+                       : 'No named businesses found here — try a bigger radius or more categories.', !all.length);
+  render();
+}
+
+function getStatus(x) { return (meta[leadKey(x)] || {}).status || 'new'; }
+function getNote(x) { return (meta[leadKey(x)] || {}).note || ''; }
+function setLeadStatus(i, val) {
+  const k = leadKey(leads[i]);
+  meta[k] = meta[k] || {};
+  meta[k].status = val;
+  saveMeta();
+  render();
+}
+function setLeadNote(i, val) {
+  const k = leadKey(leads[i]);
+  meta[k] = meta[k] || {};
+  meta[k].note = val;
+  saveMeta();
+}
+
+function render() {
+  if (!leads.length && !window.totalScanned) return;
+  const nHot = leads.filter(x => x.tier === 'hot').length;
+  const nContacted = leads.filter(x => getStatus(x) !== 'new').length;
+  document.getElementById('nHot').textContent = nHot;
+  document.getElementById('nWarm').textContent = leads.length - nHot;
+  document.getElementById('nContacted').textContent = nContacted;
+  document.getElementById('nTotal').textContent = window.totalScanned || 0;
+  document.getElementById('stats').style.display = 'flex';
+  document.getElementById('toolbar').style.display = 'flex';
+  document.getElementById('footHint').style.display = 'block';
+  document.getElementById('resultLabel').textContent = leads.length + ' leads near ' + lastPlace;
+
+  const tabs = [
+    { id: 'all', label: 'All (' + leads.length + ')' },
+    { id: 'hot', label: '🔥 Hot (' + nHot + ')' },
+    { id: 'social', label: 'Social only (' + leads.filter(x => x.tier === 'social').length + ')' },
+    { id: 'contacted', label: '✉️ Contacted (' + nContacted + ')' },
+  ];
+  const tabsEl = document.getElementById('tabs');
+  tabsEl.style.display = 'flex';
+  tabsEl.innerHTML = tabs.map(t =>
+    '<div class="tab' + (currentTab === t.id ? ' on' : '') + '" onclick="currentTab=\'' + t.id + '\';render()">' + t.label + '</div>'
+  ).join('');
+
+  const ft = (document.getElementById('filterText').value || '').toLowerCase();
+  const shown = leads.map((x, i) => ({ x, i })).filter(({ x }) => {
+    if (ft && !x.name.toLowerCase().includes(ft)) return false;
+    if (currentTab === 'hot') return x.tier === 'hot';
+    if (currentTab === 'social') return x.tier === 'social';
+    if (currentTab === 'contacted') return getStatus(x) !== 'new';
+    return true;
+  });
+
+  document.getElementById('results').innerHTML = shown.map(({ x, i }) => {
+    const st = getStatus(x);
+    const badge = x.tier === 'hot' ? '<span class="badge hot">🔥 no website · has contact</span>'
+      : x.tier === 'social' ? '<span class="badge warm">social only</span>'
+      : '<span class="badge warm">no website</span>';
+    const stBadge = st === 'won' ? ' <span class="badge ok">won</span>'
+      : st === 'contacted' || st === 'replied' ? ' <span class="badge ok">' + st + '</span>' : '';
+    const gq = encodeURIComponent(x.name + ' ' + lastPlace);
+    const opts = STATUSES.map(s => '<option value="' + s + '"' + (s === st ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>').join('');
+    return '<div class="card ' + (x.tier === 'hot' ? 'hot' : 'warm') + (st === 'won' || st === 'dead' ? ' done' : '') + '">'
+      + '<div class="top"><h3>' + esc(x.name) + '</h3><div>' + badge + stBadge + '</div></div>'
+      + '<div class="meta">' + esc(x.type)
+      + (x.addr ? ' · ' + esc(x.addr) : '')
+      + (x.phone ? ' · <b>' + esc(x.phone) + '</b>' : '')
+      + (x.email ? ' · <b>' + esc(x.email) + '</b>' : '')
+      + (x.social ? ' · has social page' : '') + '</div>'
+      + '<div class="actions">'
+      + '<a target="_blank" href="https://www.google.com/search?q=' + gq + '">🔎 Google them</a>'
+      + '<a target="_blank" href="https://www.google.com/maps/search/?api=1&query=' + x.lat + ',' + x.lon + '">🗺 Map</a>'
+      + '<button onclick="toggleOutreach(' + i + ', this)">✍️ Outreach</button>'
+      + '<select onchange="setLeadStatus(' + i + ', this.value)">' + opts + '</select>'
+      + '</div>'
+      + '<div class="outreach" id="ob' + i + '" data-open="0"></div>'
+      + '<input class="note" placeholder="Notes… (saved automatically)" value="' + esc(getNote(x)) + '" onchange="setLeadNote(' + i + ', this.value)">'
+      + '</div>';
+  }).join('') || '<div class="hint">Nothing in this view.</div>';
+}
+
+function toggleOutreach(i, btn) {
+  const box = document.getElementById('ob' + i);
+  if (box.dataset.open === '1') {
+    box.style.display = 'none'; box.dataset.open = '0'; btn.textContent = '✍️ Outreach';
+    return;
+  }
+  OBCACHE[i] = { o: buildOutreach(leads[i]), x: leads[i] };
+  box.innerHTML =
+    '<div class="obtabs">'
+    + '<span class="obtab on" onclick="obShow(' + i + ',\'email\',this)">✉️ Email</span>'
+    + '<span class="obtab" onclick="obShow(' + i + ',\'sms\',this)">💬 Text / DM</span>'
+    + '<span class="obtab" onclick="obShow(' + i + ',\'script\',this)">📞 Call script</span>'
+    + '</div>'
+    + '<textarea class="obtext" id="obt' + i + '"></textarea>'
+    + '<div class="obactions" id="oba' + i + '"></div>'
+    + '<div class="obai">'
+    + '<button class="aibtn" onclick="aiRewrite(' + i + ', this)">✨ Rewrite with AI</button>'
+    + '<button class="aibtn" onclick="buildSite(' + i + ', this)">🎨 Build preview site</button>'
+    + '</div>'
+    + '<div class="oberr" id="obe' + i + '"></div>';
+  box.style.display = 'block'; box.dataset.open = '1'; btn.textContent = '✕ Close';
+  obShow(i, 'email', box.querySelector('.obtab'));
+}
+
+function obShow(i, which, tab) {
+  const { o, x } = OBCACHE[i];
+  const box = document.getElementById('ob' + i);
+  box.querySelectorAll('.obtab').forEach(t => t.classList.toggle('on', t === tab));
+  document.getElementById('obt' + i).value = o[which];
+  const phone = (x.phone || '').replace(/[^\d+]/g, '');
+  let send = '';
+  if (which === 'email') {
+    const subj = (o.email.match(/^Subject:\s*(.*)/) || [])[1] || ('A website for ' + x.name);
+    const body = o.email.replace(/^Subject:.*?\n\n/, '');
+    send = x.email
+      ? '<a class="send" target="_blank" href="mailto:' + encodeURIComponent(x.email)
+        + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body) + '">✉️ Open in email app</a>'
+      : '<span class="nosend" title="OpenStreetMap has no email for this business">no email listed — copy &amp; paste</span>';
+  } else if (which === 'sms') {
+    send = phone
+      ? '<a class="send" target="_blank" href="sms:' + phone + '?&body=' + encodeURIComponent(o.sms) + '">💬 Open in Messages</a>'
+      : '<span class="nosend">no phone — paste this into a DM</span>';
+  } else {
+    send = phone
+      ? '<a class="send" target="_blank" href="tel:' + phone + '">📞 Call ' + esc(x.phone) + '</a>'
+      : '<span class="nosend">no phone listed</span>';
+  }
+  document.getElementById('oba' + i).innerHTML =
+    '<button onclick="obCopy(' + i + ', this)">📋 Copy</button>' + send;
+}
+
+function obCopy(i, btn) {
+  navigator.clipboard.writeText(document.getElementById('obt' + i).value).then(() => {
+    btn.textContent = '✅ Copied';
+    setTimeout(() => btn.textContent = '📋 Copy', 1500);
+  });
+}
+
+// ---- Claude (Anthropic API, called directly from the browser) ----
+async function callClaude(opts) {
+  const key = (localStorage.getItem('ls_anthropic_key') || '').trim();
+  if (!key) throw new Error('NO_KEY');
+  const model = localStorage.getItem('ls_model') || 'claude-opus-4-8';
+  const body = { model, max_tokens: opts.maxTokens || 1500, messages: opts.messages };
+  if (opts.system) body.system = opts.system;
+  if (opts.format) body.output_config = { format: opts.format };
+  const r = await fetchTimeout('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify(body),
+  }, 90000);
+  if (!r.ok) {
+    let msg = 'API error ' + r.status;
+    if (r.status === 401) msg = 'That API key was rejected (401). Double-check it in ⚙️ settings.';
+    else if (r.status === 429) msg = 'Rate limited or out of credit (429). Check your Anthropic console.';
+    else { try { const e = await r.json(); if (e.error && e.error.message) msg = e.error.message; } catch (x) {} }
+    throw new Error(msg);
+  }
+  const js = await r.json();
+  if (js.stop_reason === 'refusal') throw new Error('The model declined to write this one.');
+  return (js.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+}
+
+function aiError(e, i) {
+  const el = document.getElementById('obe' + i);
+  if (!el) return;
+  if (e.message === 'NO_KEY') {
+    el.innerHTML = 'Add your Anthropic API key first — open <b>🤖 AI writing</b> under the search box. '
+      + '<a onclick="openAiSettings()">Open settings</a>';
+  } else {
+    el.textContent = '⚠️ ' + e.message;
+  }
+  el.className = 'oberr on';
+}
+function clearAiError(i) { const el = document.getElementById('obe' + i); if (el) el.className = 'oberr'; }
+function openAiSettings() {
+  const boxes = document.querySelectorAll('details.settings');
+  const box = boxes[boxes.length - 1];
+  if (box) { box.open = true; box.scrollIntoView({ block: 'center' }); }
+}
+
+async function aiRewrite(i, btn) {
+  clearAiError(i);
+  const x = OBCACHE[i].x, o = offer();
+  const orig = btn.textContent;
+  btn.disabled = true; btn.innerHTML = '<span class="spin">⏳</span> Writing…';
+  try {
+    const reach = [x.phone && 'phone', x.email && 'email', (!x.email && x.social) && 'social media only']
+      .filter(Boolean).join(', ') || 'no contact info found';
+    const system = 'You are an expert cold-outreach copywriter helping a freelance web designer win '
+      + 'website-building gigs from local businesses that currently have no website. Warm, human, specific, '
+      + 'never pushy or salesy. Do not invent facts about the business beyond what you are told. '
+      + 'No bracketed placeholders like [Name] — if a detail is unknown, write around it.';
+    const user = 'Write cold outreach for this lead in three formats.\n\n'
+      + 'Business name: ' + x.name + '\nBusiness type: ' + x.type + '\nLocation: ' + lastPlace + '\n'
+      + 'Reachable by: ' + reach + '\n'
+      + 'My name: ' + (o.name || '(not provided)') + '\nMy contact: ' + (o.contact || '(not provided)') + '\n'
+      + 'Turnaround I can offer: ' + o.turn + '\n\n'
+      + 'Return JSON with: subject (email subject, <8 words), email (body only, ~90-130 words, sign off with '
+      + 'my name if provided), sms (one or two sentences under 300 chars, sign with my name if provided), '
+      + 'script (a phone opener as 4-5 bullet lines each starting with "• ").';
+    const raw = await callClaude({
+      maxTokens: 1600, system, messages: [{ role: 'user', content: user }],
+      format: { type: 'json_schema', schema: {
+        type: 'object',
+        properties: { subject: { type: 'string' }, email: { type: 'string' }, sms: { type: 'string' }, script: { type: 'string' } },
+        required: ['subject', 'email', 'sms', 'script'], additionalProperties: false } },
+    });
+    const j = JSON.parse(raw);
+    OBCACHE[i].o = { email: 'Subject: ' + j.subject + '\n\n' + j.email, sms: j.sms, script: j.script };
+    const active = document.querySelector('#ob' + i + ' .obtab.on');
+    const label = active ? active.textContent : '';
+    const which = label.includes('Text') ? 'sms' : label.includes('Call') ? 'script' : 'email';
+    obShow(i, which, active || document.querySelector('#ob' + i + ' .obtab'));
+  } catch (e) {
+    aiError(e, i);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+async function buildSite(i, btn) {
+  clearAiError(i);
+  const x = OBCACHE[i].x;
+  const orig = btn.textContent;
+  btn.disabled = true; btn.innerHTML = '<span class="spin">⏳</span> Building… (~20s)';
+  try {
+    const system = 'You are a senior web designer. Output ONE complete, self-contained HTML document '
+      + '(inline CSS only, no external requests, no frameworks, no markdown fences) for a small local '
+      + "business's one-page website. Make it modern, clean, tasteful, and mobile-responsive, with a color "
+      + 'palette and typography that fit the business. Use realistic placeholder copy where real details are '
+      + 'unknown. Begin the file with an HTML comment listing the placeholder details the owner should confirm.';
+    const user = 'Build a one-page marketing website for:\n'
+      + 'Name: ' + x.name + '\nType: ' + x.type + '\nLocation: ' + lastPlace + '\n'
+      + (x.phone ? 'Phone: ' + x.phone + '\n' : '') + (x.email ? 'Email: ' + x.email + '\n' : '')
+      + 'Include: a hero with the business name and a tagline, an about section, a services/menu section '
+      + 'appropriate to the business type, hours (placeholder), and a contact section. Output only the HTML.';
+    let html = await callClaude({ maxTokens: 8000, system, messages: [{ role: 'user', content: user }] });
+    html = html.replace(/^\s*```html?\s*/i, '').replace(/\s*```\s*$/, '');
+    showPreview(html, x.name);
+    btn.textContent = '🎨 Rebuild preview site';
+  } catch (e) {
+    btn.textContent = orig;
+    aiError(e, i);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+let previewHtml = '', previewName = '';
+function showPreview(html, name) {
+  previewHtml = html; previewName = name;
+  document.getElementById('ovTitle').textContent = 'Preview: ' + name;
+  document.getElementById('ovFrame').srcdoc = html;
+  document.getElementById('overlay').classList.add('on');
+}
+function closePreview() {
+  document.getElementById('overlay').classList.remove('on');
+  document.getElementById('ovFrame').srcdoc = '';
+}
+function downloadPreview() {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([previewHtml], { type: 'text/html' }));
+  a.download = (previewName.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'site') + '-preview.html';
+  a.click();
+}
+
+function exportCSV() {
+  const rows = [['Name', 'Type', 'Tier', 'Phone', 'Email', 'Address', 'Maps link', 'Status', 'Notes', 'Email draft', 'Text draft']];
+  leads.forEach(x => {
+    const o = buildOutreach(x);
+    rows.push([x.name, x.type, x.tier, x.phone, x.email, x.addr,
+      'https://www.google.com/maps/search/?api=1&query=' + x.lat + ',' + x.lon,
+      getStatus(x), getNote(x), o.email, o.sms]);
+  });
+  const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = 'leads-' + lastPlace.replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '.csv';
+  a.click();
+}
+
+function esc(s) { return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
+
+// Restore last scan so results survive closing the tab
+(function restore() {
+  const last = JSON.parse(localStorage.getItem('ls_last') || 'null');
+  if (!last || !last.leads?.length) return;
+  leads = last.leads;
+  lastPlace = last.place;
+  window.totalScanned = last.total;
+  const mins = Math.round((Date.now() - last.when) / 60000);
+  const ago = mins < 60 ? mins + ' min ago' : Math.round(mins / 60) + 'h ago';
+  setStatus('Restored your last scan of ' + esc(last.place) + ' (' + ago + '). Hit Scan for fresh data.');
+  render();
+})();
+</script>
+</body>
+</html>
