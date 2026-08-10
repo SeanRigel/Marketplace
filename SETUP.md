@@ -23,11 +23,17 @@ if the public can read `repo_url` or mint their own purchases.
    the free tier is fine. Save the database password somewhere safe — you won't need
    it for this app, but you can't recover it.
 2. Wait for provisioning to finish (~2 min).
-3. Open **SQL Editor** and run these three files in order, one at a time. Each should
+3. Open **SQL Editor** and run these four files in order, one at a time. Each should
    report success before you run the next:
    - `supabase/waitlist.sql`
    - `supabase/schema.sql`
    - `supabase/payments.sql`
+   - `supabase/reviews_and_health.sql`
+
+   ⚠️ **The fourth file is not optional.** Besides reviews and demo health, it fixes a
+   security hole: views created without `security_invoker = on` run with the view
+   owner's privileges and bypass row-level security, which means draft and delisted
+   listings would be visible to anyone. `preflight.mjs` checks for this specifically.
 4. Go to **Project Settings → API** and copy:
    - Project URL
    - `anon` `public` key
@@ -162,6 +168,19 @@ curl -X POST https://YOUR-DOMAIN/api/release-payouts -H "Authorization: Bearer $
 ```
 
 An empty `{"released":0,"results":[]}` is the correct answer when nothing is due yet.
+
+### Schedule the demo health check too
+
+Same mechanism, same secret, different endpoint. The entire pitch is that every listing
+has a working demo; demos rot quietly, and nothing else notices.
+
+```bash
+curl -X POST https://YOUR-DOMAIN/api/check-demos -H "Authorization: Bearer $CRON_SECRET"
+```
+
+Daily is fine. It marks a demo `error` only after two consecutive failures, so one blip
+doesn't put a "demo down" badge on someone's listing. It never auto-delists — that's a
+judgement call to make once you know how noisy real checks are.
 
 ---
 

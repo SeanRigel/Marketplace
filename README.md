@@ -4,8 +4,9 @@ A builder-to-builder marketplace for reusable operational tools. Every listing i
 running app you can use before you pay, ships as a fork-and-deploy template, and is
 covered by a refund window.
 
-**Status: steps 0–3 done.** Validation landing page; auth, profiles, and listing CRUD;
-Stripe Connect checkout with held payouts and a self-service refund window.
+**Status: steps 0–5 done.** Validation landing page; auth, profiles, and listing CRUD;
+Stripe Connect checkout with held payouts and a self-service refund window; reviews,
+seller profiles, search and sort, and automated demo health checking.
 
 ---
 
@@ -19,13 +20,29 @@ app/app.js              hash router + views
 app/style.css           app styling (same tokens as the landing page)
 config.js               brand + Supabase keys + the featured listing data
 functions/api/*.js      Cloudflare Pages Functions — checkout, webhook, connect,
-                        refund, release-payouts
+                        refund, release-payouts, check-demo(s)
 functions/_shared/*.js  Stripe-over-fetch, Supabase server access, helpers
+scripts/preflight.mjs   pre-deploy validation, including the security checks
 supabase/waitlist.sql   waitlist table, unique index, RLS policy
 supabase/schema.sql     profiles, listings, purchases, reviews, sandbox_instances + RLS
 supabase/payments.sql   payout holds, fee settings, payouts_due + seller_earnings views
+supabase/reviews_and_health.sql
+                        ratings, seller profiles, demo health + a view security fix
 demos/                  three real working apps, served as Phase 1 sandbox demos
 ```
+
+### Demo health checking
+
+The product's whole claim is that every listing has a working demo. Demos rot — a
+domain lapses, a free tier sleeps, a deploy breaks — and nothing else in the system
+notices. `/api/check-demos` fetches every live listing's demo on a schedule and records
+status, latency, and a consecutive-failure count in `sandbox_instances`.
+
+Two deliberate choices: a demo is only marked `error` after **two** consecutive
+failures, so one blip doesn't badge a seller's listing as broken; and it **never
+auto-delists**, because how noisy real checks are is a thing to learn from data rather
+than guess at. Sellers can also test a URL themselves from the listing form via
+`/api/check-demo`.
 
 ### Why Pages Functions
 
@@ -161,6 +178,16 @@ timestamp, missing header, secret rotation) and Stripe's nested form encoding. W
 keeping green — a broken verifier means anyone who finds the URL can forge a completed
 purchase and unlock every repo.
 
+```bash
+node functions/api/check-demo.test.mjs
+```
+
+35 cases on the SSRF host filter. `/api/check-demo` makes the server fetch a URL the
+caller chose, so the filter is the only thing stopping a signed-in seller from using
+the worker to probe cloud metadata endpoints or private ranges. Includes the boundary
+cases that are easy to get wrong (`172.15.*` and `172.32.*` are public, `172.16–31.*`
+are not; a host named `internal-tools.example.com` is fine, `db.internal` is not).
+
 The anon key is public by design and the RLS policy only grants `insert`, so nobody
 can read the list back through it. The `service_role` key must never appear in any
 file in this directory.
@@ -204,6 +231,13 @@ now; revisit when a seller outside the US wants to list.
 brief. If someone starts refunding every purchase after cloning the repo, the fix is a
 per-buyer limit, not a dispute queue. Watch for it before building for it.
 
+**Postgres views bypass RLS unless you say otherwise.** A view runs with its owner's
+privileges by default, so `listings_with_seller` — the view browse and the listing page
+read — was returning draft and delisted listings to anyone. Every view now sets
+`security_invoker = on`, and `preflight.mjs` checks for the regression specifically.
+This shipped broken in step 2 and was caught in step 5; local-mode testing hid it,
+because the local backend enforced the rule correctly on its own.
+
 **repo_url is protected by column privileges, not just RLS.** RLS is row-level, so a
 select policy alone would hand `repo_url` to anyone who can see the row — which is
 everyone, since live listings are public. `schema.sql` revokes the column from `anon`
@@ -221,19 +255,28 @@ with the `service_role` key in step 3. A browser must never be able to mint a pu
 step to demo, unlike the three single-file tools. Skipped for now rather than shipping
 a listing whose demo doesn't run — the whole pitch is that every demo works.
 
+## Deliberately not built
+
+**Phase 2 fork-and-deploy** (a `deploy.config.json` manifest and a guided setup wizard)
+and **Phase 2/3 sandbox automation**. The brief is explicit that these wait until real
+listings and real sales exist, and that's the right call: the manifest format should be
+designed against what actual sellers put in their setup docs, not guessed at now. Phase
+1 — seller-supplied demo URL and setup markdown, buyer gets repo access on purchase —
+is what's built, and it already beats "here's a zip file".
+
+**Admin moderation UI.** Per the brief, flipping `pending_review` → `live` by hand in
+the Supabase dashboard is fine until there's volume worth automating.
+
 ## Next step
 
-**Step 4 is mostly already here** — Phase 1 sandbox linking and fork-and-deploy
-packaging are what the listing form and buyer dashboard already do (seller submits a
-demo URL and setup markdown; buyer gets repo access plus instructions on purchase).
+Everything left is account setup — see [SETUP.md](SETUP.md):
 
-So the real remaining work is **step 5**: reviews (schema and policies exist, no UI
-yet), search and filter polish, and dashboard refinement.
-
-Before any of that, the thing that actually unblocks revenue:
-
-1. Create the Supabase project, run the three SQL files.
+1. Create the Supabase project, run the four SQL files.
 2. Do the Stripe Connect platform setup.
 3. Deploy to Pages, set the env vars, register the webhook.
-4. Schedule the payout sweep.
+4. Schedule both crons — payouts and demo health.
 5. List your own three tools for real and get a stranger through checkout.
+
+Then the only question worth answering: does a working demo plus a real refund window
+actually change what buyers do, versus a PromptBase-style listing? That's what the
+whole thing was built to test.

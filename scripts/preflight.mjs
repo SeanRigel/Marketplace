@@ -98,14 +98,17 @@ try {
 // payments are configured, so the rest is skipped rather than the run aborted.
 if (!supabaseUp) console.log('  \x1b[2mSkipping schema and security checks — no connection.\x1b[0m');
 
-for (const t of supabaseUp ? ['waitlist', 'profiles', 'listings', 'purchases', 'reviews', 'sandbox_instances', 'platform_settings'] : []) {
+for (const t of supabaseUp ? ['waitlist', 'profiles', 'listings', 'purchases', 'reviews', 'sandbox_instances', 'platform_settings'] : []) { // eslint-disable-line
   const r = await sb(`/${t}?select=*&limit=1`, { key: env.SUPABASE_SERVICE_ROLE_KEY });
   if (r.status === 404 || r.json?.code === '42P01') bad(`Table "${t}" missing`, 'Run the SQL files in supabase/ in order.');
   else if (r.ok) ok(`Table "${t}"`);
   else meh(`Table "${t}" responded ${r.status}`, r.json?.message || r.text.slice(0, 90));
 }
 
-for (const v of supabaseUp ? ['listings_with_seller', 'payouts_due', 'seller_earnings'] : []) {
+for (const v of supabaseUp
+  ? ['listings_with_seller', 'payouts_due', 'seller_earnings',
+     'listing_ratings', 'reviews_public', 'seller_public']
+  : []) {
   const r = await sb(`/${v}?select=*&limit=1`, { key: env.SUPABASE_SERVICE_ROLE_KEY });
   if (r.ok) ok(`View "${v}"`);
   else bad(`View "${v}" missing or broken`, r.json?.message || `HTTP ${r.status}`);
@@ -134,10 +137,29 @@ const fakeBuy = await sb('/purchases', {
 if (fakeBuy.ok) bad('ANON CAN INSERT PURCHASES', 'Anyone can unlock every repo for free. Re-run schema.sql.');
 else ok('Anonymous cannot create purchases', `HTTP ${fakeBuy.status}`);
 
-// Drafts belong to their seller only.
+// Drafts belong to their seller only — check the table...
 const drafts = await sb('/listings?select=id,status&status=eq.draft&limit=1');
 if (drafts.ok && drafts.json?.length) bad('Draft listings are publicly visible', 'The select policy is wrong.');
-else ok('Drafts are not publicly listed');
+else ok('Drafts are not publicly listed (table)');
+
+// ...and the view the app actually reads. A view without security_invoker runs as
+// its owner and silently bypasses RLS, which is exactly how drafts leaked before.
+const draftsView = await sb('/listings_with_seller?select=id,status&status=eq.draft&limit=1');
+if (draftsView.ok && draftsView.json?.length) {
+  bad('Drafts leak through listings_with_seller',
+      'The view is missing security_invoker = on. Run supabase/reviews_and_health.sql.');
+} else {
+  ok('Drafts are not visible through the view');
+}
+
+// Health data is written by the checker, never by a seller marking their own
+// broken demo as fine.
+const healthWrite = await sb('/sandbox_instances', {
+  method: 'POST',
+  body: { listing_id: '00000000-0000-4000-8000-000000000000', status: 'live' }
+});
+if (healthWrite.ok) bad('ANON CAN WRITE DEMO HEALTH', 'Re-run supabase/reviews_and_health.sql.');
+else ok('Anonymous cannot forge demo health', `HTTP ${healthWrite.status}`);
 
 const settings = await sb('/platform_settings?select=platform_fee_bps,refund_window_days&limit=1');
 if (settings.ok && settings.json?.[0]) {

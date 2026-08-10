@@ -35,7 +35,9 @@
     var K = {
       users: 'forkable_local_users',
       listings: 'forkable_local_listings',
-      purchases: 'forkable_local_purchases'
+      purchases: 'forkable_local_purchases',
+      reviews: 'forkable_local_reviews',
+      health: 'forkable_local_health'
     };
 
     function read(k) {
@@ -108,9 +110,36 @@
       });
     }
 
+    /* Mirrors listing_ratings: every review hangs off a purchase, so a rating
+     * can only exist where a real purchase did. */
+    function ratingFor(listingId) {
+      var purchaseIds = read(K.purchases).filter(function (p) {
+        return p.listing_id === listingId;
+      }).map(function (p) { return p.id; });
+
+      var rs = read(K.reviews).filter(function (r) {
+        return purchaseIds.indexOf(r.purchase_id) !== -1;
+      });
+      if (!rs.length) return { review_count: 0, avg_rating: null };
+      var sum = rs.reduce(function (s, r) { return s + r.rating; }, 0);
+      return { review_count: rs.length, avg_rating: Math.round((sum / rs.length) * 100) / 100 };
+    }
+
     function decorate(l) {
       var out = Object.assign({}, l);
-      out.seller_name = (profileOf(l.seller_id) || {}).display_name || 'Unknown';
+      var seller = profileOf(l.seller_id) || {};
+      out.seller_name = seller.display_name || 'Unknown';
+      out.seller_bio = seller.bio || null;
+
+      var r = ratingFor(l.id);
+      out.review_count = r.review_count;
+      out.avg_rating = r.avg_rating;
+
+      var h = read(K.health).filter(function (x) { return x.listing_id === l.id; })[0];
+      out.demo_status = h ? h.status : null;
+      out.demo_last_checked_at = h ? h.last_checked_at : null;
+      out.demo_consecutive_failures = h ? h.consecutive_failures : 0;
+
       if (!canSeeRepo(l)) delete out.repo_url;
       return out;
     }
@@ -179,6 +208,13 @@
           return l.status === 'live' || l.seller_id === me;   // matches the select policy
         });
         if (opts.category) rows = rows.filter(function (l) { return l.category === opts.category; });
+        if (opts.tag) {
+          rows = rows.filter(function (l) {
+            return (l.tech_stack_tags || []).some(function (t) {
+              return t.toLowerCase() === opts.tag.toLowerCase();
+            });
+          });
+        }
         if (opts.q) {
           var q = opts.q.toLowerCase();
           rows = rows.filter(function (l) {
@@ -186,8 +222,19 @@
               .toLowerCase().indexOf(q) !== -1;
           });
         }
-        rows.sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
-        return Promise.resolve(rows.map(decorate));
+
+        var out = rows.map(decorate);
+        var sorts = {
+          newest: function (a, b) { return b.created_at.localeCompare(a.created_at); },
+          price_asc: function (a, b) { return a.price_cents - b.price_cents; },
+          price_desc: function (a, b) { return b.price_cents - a.price_cents; },
+          // Unrated listings sort last rather than sorting as zero.
+          rating: function (a, b) {
+            return (b.avg_rating === null ? -1 : b.avg_rating) - (a.avg_rating === null ? -1 : a.avg_rating);
+          }
+        };
+        out.sort(sorts[opts.sort] || sorts.newest);
+        return Promise.resolve(out);
       },
 
       myListings: function () {
@@ -311,6 +358,99 @@
         return Promise.reject(new Error('Stripe onboarding needs the live backend — add Supabase and Stripe keys first.'));
       },
 
+      /* ---- reviews ---- */
+
+      listReviews: function (listingId) {
+        var purchases = read(K.purchases);
+        var byId = {};
+        purchases.forEach(function (p) { byId[p.id] = p; });
+
+        return Promise.resolve(read(K.reviews).filter(function (r) {
+          var p = byId[r.purchase_id];
+          return p && p.listing_id === listingId;
+        }).map(function (r) {
+          var p = byId[r.purchase_id];
+          return Object.assign({}, r, {
+            listing_id: p.listing_id,
+            reviewer_name: (profileOf(p.buyer_id) || {}).display_name || 'A buyer'
+          });
+        }).sort(function (a, b) { return b.created_at.localeCompare(a.created_at); }));
+      },
+
+      /* Mirrors the insert policy: only the buyer of a complete purchase, one
+       * review per purchase (the unique constraint, enforced here by hand). */
+      createReview: function (purchaseId, rating, body) {
+        var me = uid();
+        if (!me) return Promise.reject(new Error('Sign in first.'));
+        if (!(rating >= 1 && rating <= 5)) return Promise.reject(new Error('Pick a rating from 1 to 5.'));
+
+        var p = read(K.purchases).filter(function (x) { return x.id === purchaseId; })[0];
+        if (!p || p.buyer_id !== me) return Promise.reject(new Error('That is not your purchase.'));
+        if (p.status !== 'complete') return Promise.reject(new Error('You can only review a completed purchase.'));
+
+        var reviews = read(K.reviews);
+        if (reviews.some(function (r) { return r.purchase_id === purchaseId; })) {
+          return Promise.reject(new Error('You already reviewed this purchase.'));
+        }
+
+        var row = {
+          id: uuid(), purchase_id: purchaseId, rating: rating,
+          body: (body || '').slice(0, 2000) || null, created_at: nowISO()
+        };
+        reviews.push(row);
+        write(K.reviews, reviews);
+        return Promise.resolve(row);
+      },
+
+      myReviewFor: function (purchaseId) {
+        return Promise.resolve(read(K.reviews).filter(function (r) {
+          return r.purchase_id === purchaseId;
+        })[0] || null);
+      },
+
+      /* ---- public seller profile ---- */
+
+      getSeller: function (id) {
+        var u = profileOf(id);
+        if (!u) return Promise.resolve(null);
+        var listings = read(K.listings).filter(function (l) {
+          return l.seller_id === id && l.status === 'live';
+        });
+        var counts = listings.reduce(function (acc, l) {
+          var r = ratingFor(l.id);
+          acc.n += r.review_count;
+          acc.sum += (r.avg_rating || 0) * r.review_count;
+          return acc;
+        }, { n: 0, sum: 0 });
+
+        return Promise.resolve({
+          id: u.id, display_name: u.display_name, bio: u.bio, created_at: u.created_at,
+          live_listing_count: listings.length,
+          review_count: counts.n,
+          avg_rating: counts.n ? Math.round((counts.sum / counts.n) * 100) / 100 : null
+        });
+      },
+
+      listingsBySeller: function (id) {
+        var me = uid();
+        var rows = read(K.listings).filter(function (l) {
+          return l.seller_id === id && (l.status === 'live' || l.seller_id === me);
+        });
+        rows.sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
+        return Promise.resolve(rows.map(decorate));
+      },
+
+      /* ---- demo health ---- */
+
+      checkDemo: function (url) {
+        // No server here, so this is the honest answer rather than a fake pass.
+        return Promise.resolve({
+          ok: null,
+          error: 'Demo testing needs the live backend (it runs server-side). ' +
+                 'Open the URL yourself to confirm it works.'
+        });
+      },
+
       sellerEarnings: function () {
         var me = uid();
         if (!me) return Promise.resolve(null);
@@ -420,8 +560,18 @@
 
       listListings: function (opts) {
         opts = opts || {};
-        var q = '/listings_with_seller?select=*&status=eq.live&order=created_at.desc';
+        var ORDER = {
+          newest: 'created_at.desc',
+          price_asc: 'price_cents.asc',
+          price_desc: 'price_cents.desc',
+          // nullslast keeps unrated listings from topping a rating sort.
+          rating: 'avg_rating.desc.nullslast'
+        };
+        var q = '/listings_with_seller?select=*&status=eq.live' +
+                '&order=' + (ORDER[opts.sort] || ORDER.newest);
+
         if (opts.category) q += '&category=eq.' + encodeURIComponent(opts.category);
+        if (opts.tag) q += '&tech_stack_tags=cs.{' + encodeURIComponent(opts.tag) + '}';
         if (opts.q) {
           // Match title OR short_description; PostgREST `or` takes a comma-joined filter list.
           var safe = opts.q.replace(/[(),*]/g, ' ');
@@ -429,6 +579,36 @@
                encodeURIComponent(safe) + '*)';
         }
         return rest(q);
+      },
+
+      listReviews: function (listingId) {
+        return rest('/reviews_public?select=*&listing_id=eq.' + listingId + '&order=created_at.desc');
+      },
+
+      createReview: function (purchaseId, rating, body) {
+        return rest('/reviews', {
+          method: 'POST',
+          body: { purchase_id: purchaseId, rating: rating, body: (body || '').slice(0, 2000) || null },
+          headers: { 'Prefer': 'return=representation' }
+        }).then(function (r) { return r && r[0]; });
+      },
+
+      myReviewFor: function (purchaseId) {
+        return rest('/reviews?select=*&purchase_id=eq.' + purchaseId)
+          .then(function (r) { return (r && r[0]) || null; });
+      },
+
+      getSeller: function (id) {
+        return rest('/seller_public?select=*&id=eq.' + id)
+          .then(function (r) { return (r && r[0]) || null; });
+      },
+
+      listingsBySeller: function (id) {
+        return rest('/listings_with_seller?select=*&seller_id=eq.' + id + '&order=created_at.desc');
+      },
+
+      checkDemo: function (url) {
+        return this.api('/api/check-demo', { method: 'POST', body: { url: url } });
       },
 
       myListings: function () {
