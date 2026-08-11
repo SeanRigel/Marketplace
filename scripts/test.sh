@@ -16,6 +16,7 @@ run() {
 
 run "Webhook signatures + Stripe form encoding" node functions/_shared/stripe.test.mjs
 run "SSRF host filter" node functions/api/check-demo.test.mjs
+run "GitHub URL parsing" node functions/api/import-repo.test.mjs
 
 printf '\n\033[1mSyntax\033[0m\n'
 tmp=$(mktemp -d)

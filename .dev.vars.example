@@ -14,3 +14,8 @@ STRIPE_WEBHOOK_SECRET=whsec_...     # from `stripe listen` or the webhook endpoi
 
 SITE_URL=http://localhost:8788      # your deployed origin in production
 CRON_SECRET=generate-a-long-random-string
+
+# Only needed for "draft a listing from a GitHub repo" (/api/import-repo).
+# SECRET. Every click spends money — SET A SPEND LIMIT in the Anthropic console
+# before you put this key anywhere. Leave blank and the feature simply stays off.
+ANTHROPIC_API_KEY=sk-ant-...

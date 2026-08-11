@@ -33,7 +33,7 @@ Stripe may say your profile is "under review". That's fine. Keep going.
       database password — save it somewhere, you can't get it back.
 - [ ] 3. Wait about 2 minutes for it to finish building.
 - [ ] 4. In the left menu click **SQL Editor**, then **New query**.
-- [ ] 5. Now you're going to run 5 files, **one at a time, in this exact order**.
+- [ ] 5. Now you're going to run 6 files, **one at a time, in this exact order**.
 
       For each one: open the file, select all, copy, paste into the SQL Editor,
       click **Run**. Wait for "Success". Then clear it and do the next one.
@@ -43,6 +43,7 @@ Stripe may say your profile is "under review". That's fine. Keep going.
       3. `supabase/payments.sql`
       4. `supabase/reviews_and_health.sql`
       5. `supabase/changelog.sql`
+      6. `supabase/licenses_and_requests.sql`
 
       ⚠️ Don't skip #4. It fixes a security hole that would let strangers see your
       unfinished draft listings.
@@ -79,12 +80,17 @@ Stripe may say your profile is "under review". That's fine. Keep going.
       cp .dev.vars.example .dev.vars
       ```
 
-- [ ] 2. Open `.dev.vars` and fill in all 7 lines. Six you already have. For the last
-      one (`CRON_SECRET`) run this and paste the result:
+- [ ] 2. Open `.dev.vars` and fill in the 7 required lines. Six you already have. For
+      the last one (`CRON_SECRET`) run this and paste the result:
 
       ```bash
       node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
       ```
+
+      There's an 8th line, `ANTHROPIC_API_KEY`. It's **optional** — it only powers
+      "draft a listing from a GitHub repo". Leave it blank and that one button is off;
+      everything else works. If you do add it, **set a spend limit in the Anthropic
+      console first** — every click on that button costs money.
 
 - [ ] 3. Check your work:
 

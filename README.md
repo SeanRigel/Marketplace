@@ -29,8 +29,54 @@ supabase/payments.sql   payout holds, fee settings, payouts_due + seller_earning
 supabase/reviews_and_health.sql
                         ratings, seller profiles, demo health + a view security fix
 supabase/changelog.sql  listing_updates + the "maintained?" summary view
+supabase/licenses_and_requests.sql
+                        license tiers + the request board
 demos/                  three real working apps, served as Phase 1 sandbox demos
 ```
+
+### License tiers
+
+Every listing can carry two prices: single-client and unlimited-client. The buyers
+here are agencies deploying the same tool for several clients — it's the same work
+for the seller and usually 3–4× the price, which is the model Envato and ThemeForest
+run their whole business on.
+
+The tier is chosen at checkout and **the amount is read from the database**, never
+from the request body. Which licence was bought is stored on the purchase, because
+the seller can re-price tomorrow and the sale shouldn't change retroactively.
+
+### Request board
+
+`#/requests` — buyers post what they need and what they'd pay; sellers reply publicly
+and can attach one of their listings. One reply per seller per request, so it stays a
+board rather than a pitch wall.
+
+This exists because a marketplace with no catalogue gives a visitor nothing to do. It
+also doubles as the most honest market research available: people stating what they'd
+pay for. Read it before deciding what to build next.
+
+### Draft a listing from a GitHub repo
+
+`/api/import-repo` takes a public GitHub URL, reads the README through GitHub's API,
+and asks Claude to draft the listing fields. The seller edits everything before saving
+— nothing publishes automatically.
+
+Notes on how it's built:
+- **Structured outputs** (`output_config.format` with a JSON schema) rather than
+  prompt-and-parse, so there's no "sometimes it wraps the JSON in prose" failure mode.
+- `effort: 'low'` — drafting from a README isn't reasoning-heavy, and this keeps it
+  fast and cheap.
+- `stop_reason` is checked **before** reading content; a refusal returns HTTP 200 with
+  empty content, so indexing `content[0]` would throw.
+- Raw `fetch`, not the Anthropic SDK, for the same reason as Stripe: the SDK needs a
+  bundler and this project has no build step.
+- The model returns a `confidence` field and free-text `notes`; a low-confidence draft
+  is surfaced to the seller as a warning rather than filled in silently.
+
+**This is the only feature that spends money per click.** It needs `ANTHROPIC_API_KEY`,
+and it's signed-in-only for exactly that reason. Set a spend limit in the Anthropic
+console before adding the key. Leave the key unset and the feature stays off — the
+listing form still works by hand.
 
 ### Listing changelogs
 
@@ -219,6 +265,15 @@ purchase and unlock every repo.
 ```bash
 node functions/api/check-demo.test.mjs
 ```
+
+```bash
+node functions/api/import-repo.test.mjs
+```
+
+20 cases on GitHub URL parsing — the gate deciding which host the server will fetch
+on a caller's behalf. Covers the forms people actually paste (`.git` suffixes, deep
+tree links, no protocol) and the ones that must be refused (other hosts, lookalike
+domains like `github.com.evil.tld`, `file://`, loopback).
 
 35 cases on the SSRF host filter. `/api/check-demo` makes the server fetch a URL the
 caller chose, so the filter is the only thing stopping a signed-in seller from using

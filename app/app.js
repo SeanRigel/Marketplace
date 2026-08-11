@@ -115,11 +115,13 @@
     // Match on the route, not a substring: "#/seller/<id>" is a public profile,
     // not the seller dashboard, and shouldn't light up "Selling".
     var onBrowse = route === 'browse' || route === 'listing' || route === 'seller' || route === '';
+    var onRequests = route === 'requests' || route === 'request';
     var onSelling = /^#\/dashboard\/seller/.test(location.hash);
     var onBuying = /^#\/dashboard\/buyer/.test(location.hash);
 
     links.innerHTML =
       '<a href="#/browse" class="' + (onBrowse ? 'on' : '') + '">Browse</a>' +
+      '<a href="#/requests" class="' + (onRequests ? 'on' : '') + '">Requests</a>' +
       (u ? '<a href="#/dashboard/seller" class="' + (onSelling ? 'on' : '') + '">Selling</a>' +
            '<a href="#/dashboard/buyer" class="' + (onBuying ? 'on' : '') + '">Purchases</a>' : '');
 
@@ -350,10 +352,23 @@
 
         '<div class="side">' +
           '<div class="buybox">' +
-            '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:13px">' +
-              '<span class="price" style="font-size:26px">' + money(l.price_cents) + '</span>' +
-              '<span style="font-size:12px;color:var(--ink-3)">one-time</span>' +
-            '</div>' +
+            (l.extended_price_cents
+              ? '<div class="licenses" id="licenses">' +
+                  '<button type="button" class="lic on" data-lic="single">' +
+                    '<span class="lic-name">Single client</span>' +
+                    '<span class="lic-price">' + money(l.price_cents) + '</span>' +
+                    '<span class="lic-note">Deploy once, for one client project.</span>' +
+                  '</button>' +
+                  '<button type="button" class="lic" data-lic="extended">' +
+                    '<span class="lic-name">Unlimited clients</span>' +
+                    '<span class="lic-price">' + money(l.extended_price_cents) + '</span>' +
+                    '<span class="lic-note">Deploy for as many clients as you like.</span>' +
+                  '</button>' +
+                '</div>'
+              : '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:13px">' +
+                  '<span class="price" style="font-size:26px">' + money(l.price_cents) + '</span>' +
+                  '<span style="font-size:12px;color:var(--ink-3)">one-time</span>' +
+                '</div>') +
             '<button class="btn btn-primary btn-block btn-lg" id="buy">Buy this tool</button>' +
             '<div class="msg" id="buy-msg"></div>' +
             '<div class="kv" style="margin-top:10px"><span>Category</span><span>' +
@@ -436,30 +451,39 @@
         if (box) box.innerHTML = '<p class="hint">Reviews are unavailable right now.</p>';
       });
 
+      var chosenLicense = 'single';
+      var licBox = el('licenses');
+      if (licBox) {
+        licBox.onclick = function (e) {
+          var b = e.target.closest('.lic');
+          if (!b) return;
+          chosenLicense = b.dataset.lic;
+          Array.prototype.forEach.call(this.children, function (x) {
+            x.classList.toggle('on', x === b);
+          });
+        };
+      }
+
       el('buy').onclick = function () {
         var m = el('buy-msg'), btn = el('buy');
 
         if (!DB.currentUser()) {
-          m.className = 'msg err';
-          m.textContent = 'Sign in first — your purchase needs somewhere to live.';
+          setMsg(m, 'Sign in first — your purchase needs somewhere to live.', 'err');
           setTimeout(function () { go('#/auth'); }, 900);
           return;
         }
 
         btn.disabled = true;
-        m.className = 'msg';
-        m.textContent = 'Starting checkout…';
+        setMsg(m, 'Starting checkout…');
 
-        DB.startCheckout(l.id).then(function (r) {
+        DB.startCheckout(l.id, chosenLicense).then(function (r) {
           if (r && r.url) { location.href = r.url; return; }   // Stripe Checkout
           // Local mode books it immediately; there is no hosted page to visit.
-          m.className = 'msg ok';
-          m.textContent = 'Simulated purchase (local mode). Opening your purchases…';
+          setMsg(m, 'Simulated purchase (local mode). Opening your purchases…', 'ok');
           setTimeout(function () { go('#/dashboard/buyer'); }, 700);
         }).catch(function (err) {
           btn.disabled = false;
-          m.className = 'msg err';
-          m.textContent = err.message;
+          setMsg(m, err.message, 'err');
         });
       };
     }).catch(function (e) { view.innerHTML = fail(e); });
@@ -534,6 +558,249 @@
     }).catch(function () {
       box.innerHTML = '<p class="hint">Changelog unavailable.</p>';
     });
+  }
+
+  /* ------------------------------------------------------------- request board
+   * A marketplace with no catalogue has nothing for a buyer to do. The board
+   * gives demand somewhere to go before supply exists — and tells the operator
+   * what to build next, which is worth more than the feature itself early on. */
+  function viewRequests(query) {
+    var filter = { status: query.status || 'open', category: query.cat || '' };
+
+    view.innerHTML =
+      '<div class="page-head"><div>' +
+        '<h1>Requests</h1>' +
+        '<p>What builders are looking for and can\'t find. Post what you need, ' +
+          'or claim one you\'ve already built.</p>' +
+      '</div><div class="spacer"></div>' +
+      '<a class="btn btn-primary" href="#/requests/new">+ Post a request</a></div>' +
+
+      '<div class="results-bar">' +
+        '<div class="filter-list" id="req-status" style="flex-direction:row;gap:6px">' +
+          ['open', 'fulfilled', ''].map(function (s) {
+            return '<button data-s="' + s + '" aria-pressed="' + (filter.status === s) + '">' +
+              (s === '' ? 'All' : s === 'open' ? 'Open' : 'Fulfilled') + '</button>';
+          }).join('') +
+        '</div>' +
+        '<span class="count spacer" id="req-count"></span>' +
+      '</div>' +
+      '<div id="req-list"><div class="empty"><p>Loading…</p></div></div>';
+
+    el('req-status').onclick = function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      filter.status = b.dataset.s;
+      Array.prototype.forEach.call(this.children, function (x) {
+        x.setAttribute('aria-pressed', String(x === b));
+      });
+      load();
+    };
+
+    function load() {
+      DB.listRequests({ status: filter.status || undefined }).then(function (rows) {
+        var box = el('req-list');
+        if (!box) return;
+        el('req-count').textContent = rows.length + ' request' + (rows.length === 1 ? '' : 's');
+
+        if (!rows.length) {
+          box.innerHTML = '<div class="empty"><h3>Nothing posted yet</h3>' +
+            '<p>Be the first — say what you need and what you\'d pay for it.</p>' +
+            '<a class="btn btn-primary" href="#/requests/new">Post a request</a></div>';
+          return;
+        }
+
+        box.innerHTML = rows.map(function (r) {
+          return '<a class="request-row" href="#/request/' + esc(r.id) + '">' +
+            '<div class="req-main">' +
+              '<div class="row-badges">' +
+                '<span class="badge">' + esc(CATEGORY_LABELS[r.category] || r.category) + '</span>' +
+                (r.status === 'fulfilled'
+                  ? '<span class="badge badge-live">Fulfilled</span>'
+                  : '<span class="badge badge-accent">Open</span>') +
+              '</div>' +
+              '<h3>' + esc(r.title) + '</h3>' +
+              (r.body ? '<p>' + esc(r.body.slice(0, 160)) +
+                (r.body.length > 160 ? '…' : '') + '</p>' : '') +
+              '<div class="req-meta">' + avatarFor(r.author_name) + esc(r.author_name) +
+                '<span>·</span>' + new Date(r.created_at).toLocaleDateString() +
+                '<span>·</span>' + (r.response_count || 0) + ' repl' +
+                (Number(r.response_count) === 1 ? 'y' : 'ies') +
+              '</div>' +
+            '</div>' +
+            '<div class="req-budget">' +
+              (r.budget_cents
+                ? '<span class="price">' + money(r.budget_cents) + '</span><small>budget</small>'
+                : '<small>open budget</small>') +
+            '</div>' +
+          '</a>';
+        }).join('');
+      }).catch(function (e) { el('req-list').innerHTML = fail(e); });
+    }
+
+    load();
+  }
+
+  function viewRequestForm() {
+    if (needAuth()) return;
+
+    view.innerHTML =
+      '<div class="page-head"><div><h1>Post a request</h1>' +
+        '<p>Describe the tool you need. Sellers reply publicly — and if someone ' +
+          'has already built it, you\'ll find out today.</p></div>' +
+        '<div class="spacer"></div>' +
+        '<a class="btn btn-quiet btn-sm" href="#/requests">Back</a></div>' +
+
+      '<form id="f" class="card-form" style="max-width:680px">' +
+        '<div class="field"><label for="r-title">What do you need?</label>' +
+          '<input id="r-title" placeholder="Shift scheduler for a gym chain with 200 staff"></div>' +
+
+        '<div class="two">' +
+          '<div class="field"><label for="r-cat">Category</label><select id="r-cat">' +
+            DB.categories.map(function (c) {
+              return '<option value="' + c + '">' + CATEGORY_LABELS[c] + '</option>';
+            }).join('') + '</select></div>' +
+          '<div class="field"><label for="r-budget">Budget (USD, optional)</label>' +
+            '<input id="r-budget" type="number" min="0" step="10" placeholder="200">' +
+            '<div class="hint">A number makes replies far more likely.</div></div>' +
+        '</div>' +
+
+        '<div class="field"><label for="r-body">Details</label>' +
+          '<textarea id="r-body" placeholder="What it has to do, what you\'ve already tried, ' +
+            'what stack you\'d want it in, and roughly when you need it."></textarea></div>' +
+
+        '<div class="form-actions">' +
+          '<button class="btn btn-primary" id="r-save">Post request</button>' +
+          '<span class="msg" id="r-msg"></span>' +
+        '</div>' +
+      '</form>';
+
+    el('f').onsubmit = function (e) {
+      e.preventDefault();
+      var msg = el('r-msg'), btn = el('r-save');
+      var title = el('r-title').value.trim();
+      if (!title) { setMsg(msg, 'Say what you need.', 'err'); return; }
+
+      btn.disabled = true;
+      setMsg(msg, 'Posting…');
+
+      DB.createRequest({
+        title: title,
+        body: el('r-body').value.trim(),
+        category: el('r-cat').value,
+        budget_cents: Math.round(Number(el('r-budget').value || 0) * 100) || null
+      }).then(function (r) { go('#/request/' + r.id); })
+        .catch(function (err) { btn.disabled = false; setMsg(msg, err.message, 'err'); });
+    };
+  }
+
+  function viewRequest(id) {
+    view.innerHTML = '<div class="empty"><p>Loading…</p></div>';
+
+    Promise.all([DB.getRequest(id), DB.listResponses(id)]).then(function (res) {
+      var r = res[0], replies = res[1] || [];
+      if (!r) {
+        view.innerHTML = '<div class="empty"><h3>No such request</h3>' +
+          '<a class="btn btn-secondary" href="#/requests">Back to requests</a></div>';
+        return;
+      }
+
+      var me = DB.currentUser();
+      var mine = me && r.author_id === me.id;
+
+      view.innerHTML =
+        '<div class="crumbs"><a href="#/requests">Requests</a><span>›</span>' + esc(r.title) + '</div>' +
+
+        '<div class="page-head"><div>' +
+          '<div class="row-badges" style="margin-bottom:10px">' +
+            '<span class="badge">' + esc(CATEGORY_LABELS[r.category] || r.category) + '</span>' +
+            (r.status === 'fulfilled'
+              ? '<span class="badge badge-live">Fulfilled</span>'
+              : '<span class="badge badge-accent">Open</span>') +
+            (r.budget_cents ? '<span class="badge">Budget ' + money(r.budget_cents) + '</span>' : '') +
+          '</div>' +
+          '<h1>' + esc(r.title) + '</h1>' +
+          '<div class="req-meta" style="margin-top:9px">' + avatarFor(r.author_name) +
+            esc(r.author_name) + '<span>·</span>' +
+            new Date(r.created_at).toLocaleDateString() + '</div>' +
+        '</div>' +
+        (mine && r.status === 'open'
+          ? '<div class="spacer"></div><button class="btn btn-secondary btn-sm" id="mark-done">' +
+            'Mark fulfilled</button>' : '') +
+        '</div>' +
+
+        (r.body ? '<div class="panel panel-pad" style="max-width:760px">' +
+          '<div class="prose"><div class="body">' + esc(r.body) + '</div></div></div>' : '') +
+
+        '<div class="prose" style="max-width:760px">' +
+          '<h2>' + replies.length + ' repl' + (replies.length === 1 ? 'y' : 'ies') + '</h2>' +
+          '<div id="replies">' + (replies.length
+            ? replies.map(function (x) {
+                return '<div class="review">' +
+                  '<div class="review-head">' + avatarFor(x.seller_name) +
+                    '<a href="#/seller/' + esc(x.seller_id) + '" style="font-weight:550;font-size:14px">' +
+                      esc(x.seller_name) + '</a>' +
+                    '<span class="spacer"></span>' +
+                    '<span class="by">' + new Date(x.created_at).toLocaleDateString() + '</span>' +
+                  '</div>' +
+                  '<p>' + esc(x.body) + '</p>' +
+                  (x.listing_id && x.listing_title
+                    ? '<a class="btn btn-secondary btn-sm" href="#/listing/' + esc(x.listing_id) + '">' +
+                      'See ' + esc(x.listing_title) + ' →</a>' : '') +
+                '</div>';
+              }).join('')
+            : '<p class="hint">No replies yet.</p>') + '</div>' +
+        '</div>' +
+
+        (mine ? '' :
+          '<div class="panel panel-pad" style="max-width:760px;margin-top:22px">' +
+            '<label for="reply-body">Your reply</label>' +
+            '<textarea id="reply-body" placeholder="I\'ve built this — here\'s what it does. ' +
+              'Or: I could build it for X by Y."></textarea>' +
+            '<div class="field" style="margin-top:12px"><label for="reply-listing">' +
+              'Link one of your listings (optional)</label>' +
+              '<select id="reply-listing"><option value="">None</option></select></div>' +
+            '<button class="btn btn-primary" id="reply-send">Post reply</button>' +
+            '<span class="msg" id="reply-msg"></span>' +
+          '</div>');
+
+      if (mine && r.status === 'open') {
+        el('mark-done').onclick = function () {
+          DB.updateRequest(id, { status: 'fulfilled' }).then(function () { viewRequest(id); })
+            .catch(function (err) { alert(err.message); });
+        };
+      }
+
+      if (!mine) {
+        // Offer the seller's own live listings to attach.
+        DB.myListings().then(function (mine2) {
+          var sel = el('reply-listing');
+          if (!sel) return;
+          mine2.filter(function (l) { return l.status === 'live'; }).forEach(function (l) {
+            var o = document.createElement('option');
+            o.value = l.id;
+            o.textContent = l.title;
+            sel.appendChild(o);
+          });
+        }).catch(function () { /* optional */ });
+
+        el('reply-send').onclick = function () {
+          var msg = el('reply-msg'), btn = el('reply-send');
+          var body = el('reply-body').value.trim();
+          if (!body) { setMsg(msg, 'Write something first.', 'err'); return; }
+          if (!DB.currentUser()) {
+            setMsg(msg, 'Sign in to reply.', 'err');
+            setTimeout(function () { go('#/auth'); }, 800);
+            return;
+          }
+
+          btn.disabled = true;
+          setMsg(msg, 'Posting…');
+          DB.respondToRequest(id, body, el('reply-listing').value || null)
+            .then(function () { viewRequest(id); })
+            .catch(function (err) { btn.disabled = false; setMsg(msg, err.message, 'err'); });
+        };
+      }
+    }).catch(function (e) { view.innerHTML = fail(e); });
   }
 
   /* ------------------------------------------------------------- seller profile */
@@ -865,6 +1132,18 @@
         '</div><div class="spacer"></div>' +
         '<a class="btn btn-quiet btn-sm" href="#/dashboard/seller">Back</a></div>' +
 
+        (editing ? '' :
+          '<div class="import-box">' +
+            '<b>Start from a GitHub repo</b>' +
+            '<p>Paste a public repo URL and Claude drafts the listing from its README. ' +
+              'You edit everything before it saves.</p>' +
+            '<div class="row">' +
+              '<input id="repo-url" placeholder="https://github.com/you/your-tool">' +
+              '<button type="button" class="btn btn-secondary" id="import-btn">Draft it</button>' +
+            '</div>' +
+            '<div class="msg" id="import-msg"></div>' +
+          '</div>') +
+
         '<form id="f" class="card-form">' +
           '<div class="field"><label for="title">Title</label>' +
             '<input id="title" value="' + esc(l.title) + '" placeholder="Shift Scheduler w/ AI Constraint Parser"></div>' +
@@ -879,11 +1158,18 @@
                 return '<option value="' + c + '"' + (l.category === c ? ' selected' : '') + '>' +
                   CATEGORY_LABELS[c] + '</option>';
               }).join('') + '</select></div>' +
-            '<div class="field"><label for="price">Price (USD)</label>' +
+            '<div class="field"><label for="price">Price — single client (USD)</label>' +
               '<input id="price" type="number" min="0" step="1" value="' +
                 (Number(l.price_cents || 0) / 100) + '">' +
               '<div class="hint">Most tools here land between $50 and $500.</div></div>' +
           '</div>' +
+
+          '<div class="field"><label for="ext-price">Price — unlimited clients (USD, optional)</label>' +
+            '<input id="ext-price" type="number" min="0" step="1" value="' +
+              (l.extended_price_cents ? Number(l.extended_price_cents) / 100 : '') + '">' +
+            '<div class="hint">Your buyers are agencies deploying for several clients. ' +
+              'An unlimited-client tier is the same work for you and usually 3–4× the price. ' +
+              'Leave blank to offer single-client only.</div></div>' +
 
           '<div class="field"><label for="demo">Demo URL</label>' +
             '<div class="row"><input id="demo" value="' + esc(l.demo_url) + '" placeholder="https://your-demo.pages.dev">' +
@@ -935,6 +1221,8 @@
           long_description: el('long').value.trim(),
           category: el('cat').value,
           price_cents: Math.round(Number(el('price').value || 0) * 100),
+          extended_price_cents: el('ext-price').value
+            ? Math.round(Number(el('ext-price').value) * 100) : null,
           demo_url: el('demo').value.trim() || null,
           repo_url: el('repo').value.trim() || null,
           setup_instructions: el('setup').value.trim() || null,
@@ -986,6 +1274,41 @@
       });
       paintQuality();
 
+      var importBtn = el('import-btn');
+      if (importBtn) {
+        importBtn.onclick = function () {
+          var msg = el('import-msg');
+          var url = el('repo-url').value.trim();
+          if (!url) { setMsg(msg, 'Paste a GitHub repo URL first.', 'err'); return; }
+
+          importBtn.disabled = true;
+          setMsg(msg, 'Reading the repo and drafting…');
+
+          DB.importRepo(url).then(function (r) {
+            importBtn.disabled = false;
+            var d = r.draft || {};
+            // Fill, don't overwrite: anything the seller already typed wins.
+            if (!el('title').value) el('title').value = d.title || '';
+            if (!el('short').value) el('short').value = d.short_description || '';
+            if (!el('long').value) el('long').value = d.long_description || '';
+            if (!el('setup').value) el('setup').value = d.setup_instructions || '';
+            if (!el('repo').value) el('repo').value = d.repo_url || url;
+            if (!el('tags').value) el('tags').value = (d.tech_stack_tags || []).join(', ');
+            if (d.category) el('cat').value = d.category;
+            paintQuality();
+
+            var note = 'Draft filled in — read it before saving.' +
+              (r.confidence === 'low'
+                ? ' Claude flagged this one as low confidence, so check it closely.' : '') +
+              (r.notes ? ' Note: ' + r.notes : '');
+            setMsg(msg, note, r.confidence === 'low' ? 'err' : 'ok');
+          }).catch(function (err) {
+            importBtn.disabled = false;
+            setMsg(msg, err.message, 'err');
+          });
+        };
+      }
+
       el('test-demo').onclick = function () {
         var url = el('demo').value.trim();
         var m = el('demo-msg'), btn = el('test-demo');
@@ -1024,7 +1347,12 @@
 
         if (!data.title) { m.className = 'msg err'; m.textContent = 'Give it a title.'; return; }
         if (!data.short_description) {
-          m.className = 'msg err'; m.textContent = 'A short description is what buyers skim.'; return;
+          setMsg(m, 'A short description is what buyers skim.', 'err'); return;
+        }
+        if (data.extended_price_cents !== null &&
+            data.extended_price_cents <= data.price_cents) {
+          setMsg(m, 'The unlimited-client price has to be higher than the single-client price.', 'err');
+          return;
         }
         // Enforce only what the marketplace actually promises buyers. Everything
         // else in the meter is advice, not a gate.
@@ -1114,6 +1442,8 @@
                   '<span class="badge">' + money(p.amount_cents) + '</span>' +
                   '<span class="badge ' + (p.status === 'refunded' ? 'badge-danger' : 'badge-live') + '">' +
                     esc(p.status) + '</span>' +
+                  '<span class="badge">' + (p.license === 'extended'
+                    ? 'Unlimited clients' : 'Single client') + '</span>' +
                   (p.simulated ? '<span class="badge">simulated</span>' : '') +
                 '</div>' +
               '</div>' +
@@ -1285,6 +1615,8 @@
       case 'browse':    return viewBrowse(query);
       case 'listing':   return viewListing(parts[1]);
       case 'seller':    return viewSellerProfile(parts[1]);
+      case 'requests':  return parts[1] === 'new' ? viewRequestForm() : viewRequests(query);
+      case 'request':   return viewRequest(parts[1]);
       case 'auth':      return viewAuth();
       case 'dashboard':
         if (parts[1] === 'buyer')   return viewBuyer();

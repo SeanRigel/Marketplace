@@ -38,7 +38,9 @@
       purchases: 'forkable_local_purchases',
       reviews: 'forkable_local_reviews',
       health: 'forkable_local_health',
-      updates: 'forkable_local_updates'
+      updates: 'forkable_local_updates',
+      requests: 'forkable_local_requests',
+      responses: 'forkable_local_responses'
     };
 
     function read(k) {
@@ -315,7 +317,7 @@
        * in behaviour rather than just in transport — it exists so the guarantee
        * mechanic (repo unlock, countdown, self-serve refund) can be exercised
        * before a Stripe account exists. Live mode never calls this. */
-      startCheckout: function (listingId) {
+      startCheckout: function (listingId, license) {
         var me = uid();
         if (!me) return Promise.reject(new Error('Sign in first.'));
 
@@ -329,11 +331,18 @@
                  (p.status === 'complete' || p.status === 'pending');
         })) return Promise.reject(new Error('You already own this tool.'));
 
-        var fee = Math.round(l.price_cents * 0.15);
+        var tier = license === 'extended' ? 'extended' : 'single';
+        if (tier === 'extended' && !l.extended_price_cents) {
+          return Promise.reject(new Error('This seller does not offer an extended licence.'));
+        }
+        // Same rule as the server: the tier picks which stored price applies.
+        var amount = tier === 'extended' ? l.extended_price_cents : l.price_cents;
+        var fee = Math.round(amount * 0.15);
+
         purchases.push({
           id: uuid(), listing_id: listingId, buyer_id: me, seller_id: l.seller_id,
-          stripe_payment_intent_id: null, amount_cents: l.price_cents,
-          platform_fee_cents: fee, status: 'complete',
+          stripe_payment_intent_id: null, amount_cents: amount,
+          platform_fee_cents: fee, status: 'complete', license: tier,
           refund_window_expires_at: new Date(Date.now() + 14 * 86400000).toISOString(),
           payout_transfer_id: null, payout_released_at: null,
           created_at: nowISO(), simulated: true
@@ -415,6 +424,124 @@
         return Promise.resolve(read(K.reviews).filter(function (r) {
           return r.purchase_id === purchaseId;
         })[0] || null);
+      },
+
+      /* ---- request board ---- */
+
+      listRequests: function (opts) {
+        opts = opts || {};
+        var users = read(K.users);
+        var responses = read(K.responses);
+
+        var rows = read(K.requests).filter(function (r) {
+          if (opts.status && r.status !== opts.status) return false;
+          if (opts.category && r.category !== opts.category) return false;
+          if (opts.mine) return r.author_id === uid();
+          return true;
+        });
+
+        rows.sort(function (a, b) { return b.created_at.localeCompare(a.created_at); });
+
+        return Promise.resolve(rows.map(function (r) {
+          var author = users.filter(function (u) { return u.id === r.author_id; })[0];
+          return Object.assign({}, r, {
+            author_name: (author || {}).display_name || 'Someone',
+            response_count: responses.filter(function (x) { return x.request_id === r.id; }).length
+          });
+        }));
+      },
+
+      getRequest: function (id) {
+        var r = read(K.requests).filter(function (x) { return x.id === id; })[0];
+        if (!r) return Promise.resolve(null);
+        var author = read(K.users).filter(function (u) { return u.id === r.author_id; })[0];
+        return Promise.resolve(Object.assign({}, r, {
+          author_name: (author || {}).display_name || 'Someone',
+          response_count: read(K.responses).filter(function (x) { return x.request_id === id; }).length
+        }));
+      },
+
+      createRequest: function (data) {
+        var me = uid();
+        if (!me) return Promise.reject(new Error('Sign in first.'));
+        if (!data.title || !data.title.trim()) return Promise.reject(new Error('Give it a title.'));
+
+        var rows = read(K.requests);
+        var row = {
+          id: uuid(), author_id: me,
+          title: data.title.trim(),
+          body: (data.body || '').trim(),
+          category: data.category || 'other',
+          budget_cents: data.budget_cents || null,
+          status: 'open',
+          created_at: nowISO(), updated_at: nowISO()
+        };
+        rows.push(row);
+        write(K.requests, rows);
+        return Promise.resolve(row);
+      },
+
+      updateRequest: function (id, patch) {
+        var me = uid(), rows = read(K.requests), found = null;
+        rows.forEach(function (r) {
+          if (r.id !== id || r.author_id !== me) return;
+          Object.assign(r, patch, { updated_at: nowISO() });
+          found = r;
+        });
+        if (!found) return Promise.reject(new Error('Not your request.'));
+        write(K.requests, rows);
+        return Promise.resolve(found);
+      },
+
+      listResponses: function (requestId) {
+        var users = read(K.users);
+        var listings = read(K.listings);
+        return Promise.resolve(read(K.responses).filter(function (x) {
+          return x.request_id === requestId;
+        }).map(function (x) {
+          var seller = users.filter(function (u) { return u.id === x.seller_id; })[0];
+          var l = listings.filter(function (y) { return y.id === x.listing_id; })[0];
+          return Object.assign({}, x, {
+            seller_name: (seller || {}).display_name || 'A builder',
+            listing_title: l && l.status === 'live' ? l.title : null
+          });
+        }).sort(function (a, b) { return a.created_at.localeCompare(b.created_at); }));
+      },
+
+      /* Mirrors the unique index: one reply per seller per request. */
+      respondToRequest: function (requestId, body, listingId) {
+        var me = uid();
+        if (!me) return Promise.reject(new Error('Sign in first.'));
+        if (!body || !body.trim()) return Promise.reject(new Error('Say something.'));
+
+        var rows = read(K.responses);
+        var existing = rows.filter(function (x) {
+          return x.request_id === requestId && x.seller_id === me;
+        })[0];
+
+        if (existing) {
+          existing.body = body.trim();
+          existing.listing_id = listingId || null;
+          write(K.responses, rows);
+          return Promise.resolve(existing);
+        }
+
+        var row = {
+          id: uuid(), request_id: requestId, seller_id: me,
+          body: body.trim(), listing_id: listingId || null, created_at: nowISO()
+        };
+        rows.push(row);
+        write(K.responses, rows);
+        return Promise.resolve(row);
+      },
+
+      /* ---- GitHub import ---- */
+
+      importRepo: function () {
+        return Promise.reject(new Error(
+          'Repo import runs server-side through Claude — it needs the live backend ' +
+          'and an ANTHROPIC_API_KEY. Fill the listing in by hand for now.'
+        ));
       },
 
       /* ---- changelog ---- */
@@ -789,8 +916,72 @@
         });
       },
 
-      startCheckout: function (listingId) {
-        return this.api('/api/checkout', { method: 'POST', body: { listing_id: listingId } });
+      startCheckout: function (listingId, license) {
+        return this.api('/api/checkout', {
+          method: 'POST',
+          body: { listing_id: listingId, license: license === 'extended' ? 'extended' : 'single' }
+        });
+      },
+
+      importRepo: function (repoUrl) {
+        return this.api('/api/import-repo', { method: 'POST', body: { repo_url: repoUrl } });
+      },
+
+      /* ---- request board ---- */
+
+      listRequests: function (opts) {
+        opts = opts || {};
+        var q = '/requests_public?select=*&order=created_at.desc';
+        if (opts.status) q += '&status=eq.' + encodeURIComponent(opts.status);
+        if (opts.category) q += '&category=eq.' + encodeURIComponent(opts.category);
+        if (opts.mine) {
+          var u = this.currentUser();
+          if (!u) return Promise.resolve([]);
+          q += '&author_id=eq.' + u.id;
+        }
+        return rest(q);
+      },
+
+      getRequest: function (id) {
+        return rest('/requests_public?select=*&id=eq.' + id)
+          .then(function (r) { return (r && r[0]) || null; });
+      },
+
+      createRequest: function (data) {
+        var u = this.currentUser();
+        return rest('/requests', {
+          method: 'POST',
+          body: Object.assign({ author_id: u.id }, data),
+          headers: { 'Prefer': 'return=representation' }
+        }).then(function (r) { return r && r[0]; });
+      },
+
+      updateRequest: function (id, patch) {
+        return rest('/requests?id=eq.' + id, {
+          method: 'PATCH', body: patch, headers: { 'Prefer': 'return=representation' }
+        }).then(function (r) {
+          if (!r || !r.length) throw new Error('Not your request.');
+          return r[0];
+        });
+      },
+
+      listResponses: function (requestId) {
+        return rest('/request_responses_public?select=*&request_id=eq.' + requestId +
+                    '&order=created_at.asc');
+      },
+
+      respondToRequest: function (requestId, body, listingId) {
+        var u = this.currentUser();
+        return rest('/request_responses', {
+          method: 'POST',
+          body: {
+            request_id: requestId, seller_id: u.id,
+            body: body, listing_id: listingId || null
+          },
+          // The unique index makes a second reply from the same seller an
+          // update rather than an error.
+          headers: { 'Prefer': 'resolution=merge-duplicates,return=representation' }
+        }).then(function (r) { return r && r[0]; });
       },
 
       requestRefund: function (purchaseId, reason) {

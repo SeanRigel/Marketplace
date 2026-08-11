@@ -83,6 +83,7 @@ async function onCheckoutComplete(env, session) {
       stripe_payment_intent_id: session.payment_intent,
       amount_cents: session.amount_total,
       platform_fee_cents: Number(meta.platform_fee_cents || 0),
+      license: meta.license === 'extended' ? 'extended' : 'single',
       status: 'complete',
       refund_window_expires_at: expires
     }

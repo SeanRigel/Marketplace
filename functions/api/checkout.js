@@ -29,10 +29,14 @@ export async function onRequestPost({ request, env }) {
   const listingId = body.listing_id;
   if (!listingId) return fail('listing_id is required.');
 
+  // The client picks a tier, never a price — the amount for that tier is read
+  // from the database below.
+  const license = body.license === 'extended' ? 'extended' : 'single';
+
   // Price, status, and seller all come from the server's view of the world.
   const rows = await sbAdmin(
     env,
-    `/listings?select=id,title,price_cents,status,seller_id,profiles:seller_id(stripe_connect_id,stripe_charges_enabled)&id=eq.${encodeURIComponent(listingId)}`
+    `/listings?select=id,title,price_cents,extended_price_cents,status,seller_id,profiles:seller_id(stripe_connect_id,stripe_charges_enabled)&id=eq.${encodeURIComponent(listingId)}`
   );
   const listing = rows?.[0];
 
@@ -40,6 +44,11 @@ export async function onRequestPost({ request, env }) {
   if (listing.status !== 'live') return fail('That listing is not for sale.', 409);
   if (listing.seller_id === user.id) return fail('You cannot buy your own listing.', 409);
   if (listing.price_cents <= 0) return fail('That listing has no price set.', 409);
+
+  if (license === 'extended' && !listing.extended_price_cents) {
+    return fail('This seller does not offer an extended licence.', 409);
+  }
+  const amountCents = license === 'extended' ? listing.extended_price_cents : listing.price_cents;
 
   // Refuse rather than take money we might not be able to pass on.
   const seller = listing.profiles;
@@ -56,7 +65,7 @@ export async function onRequestPost({ request, env }) {
 
   const settings = await sbAdmin(env, '/platform_settings?select=platform_fee_bps&limit=1');
   const feeBps = settings?.[0]?.platform_fee_bps ?? 1500;
-  const feeCents = Math.round((listing.price_cents * feeBps) / 10000);
+  const feeCents = Math.round((amountCents * feeBps) / 10000);
 
   const siteUrl = (env.SITE_URL || new URL(request.url).origin).replace(/\/$/, '');
 
@@ -72,8 +81,10 @@ export async function onRequestPost({ request, env }) {
           quantity: 1,
           price_data: {
             currency: 'usd',
-            unit_amount: listing.price_cents,
-            product_data: { name: listing.title }
+            unit_amount: amountCents,
+            product_data: {
+              name: listing.title + (license === 'extended' ? ' — extended licence' : '')
+            }
           }
         }
       ],
@@ -83,6 +94,7 @@ export async function onRequestPost({ request, env }) {
         listing_id: listing.id,
         buyer_id: user.id,
         seller_id: listing.seller_id,
+        license: license,
         platform_fee_cents: String(feeCents)
       },
       payment_intent_data: {

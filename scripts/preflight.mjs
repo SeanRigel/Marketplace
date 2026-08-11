@@ -100,7 +100,8 @@ if (!supabaseUp) console.log('  \x1b[2mSkipping schema and security checks — n
 
 for (const t of supabaseUp
   ? ['waitlist', 'profiles', 'listings', 'purchases', 'reviews',
-     'sandbox_instances', 'platform_settings', 'listing_updates']
+     'sandbox_instances', 'platform_settings', 'listing_updates',
+     'requests', 'request_responses']
   : []) {
   const r = await sb(`/${t}?select=*&limit=1`, { key: env.SUPABASE_SERVICE_ROLE_KEY });
   if (r.status === 404 || r.json?.code === '42P01') bad(`Table "${t}" missing`, 'Run the SQL files in supabase/ in order.');
@@ -110,7 +111,8 @@ for (const t of supabaseUp
 
 for (const v of supabaseUp
   ? ['listings_with_seller', 'payouts_due', 'seller_earnings',
-     'listing_ratings', 'reviews_public', 'seller_public', 'listing_update_summary']
+     'listing_ratings', 'reviews_public', 'seller_public', 'listing_update_summary',
+     'requests_public', 'request_responses_public']
   : []) {
   const r = await sb(`/${v}?select=*&limit=1`, { key: env.SUPABASE_SERVICE_ROLE_KEY });
   if (r.ok) ok(`View "${v}"`);
