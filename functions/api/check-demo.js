@@ -9,7 +9,7 @@
  * hosts are refused — the worker sits inside Cloudflare's network and must not be
  * usable as a probe for anything that isn't the public internet.
  */
-import { json, fail, requireEnv } from '../_shared/http.js';
+import { json, fail, requireEnv, failSetup } from '../_shared/http.js';
 import { requireUser } from '../_shared/supabase.js';
 
 const TIMEOUT_MS = 10000;
@@ -44,7 +44,7 @@ export async function onRequestPost({ request, env }) {
   try {
     requireEnv(env, ['SUPABASE_URL', 'SUPABASE_ANON_KEY']);
   } catch (e) {
-    return fail(e.message, 500);
+    return failSetup(e);
   }
 
   const { error } = await requireUser(request, env);

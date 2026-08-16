@@ -11,7 +11,7 @@
  * Uses raw fetch rather than the Anthropic SDK for the same reason as Stripe:
  * the SDK needs a bundler and this project has no build step.
  */
-import { json, fail, requireEnv } from '../_shared/http.js';
+import { json, fail, requireEnv, failSetup } from '../_shared/http.js';
 import { requireUser } from '../_shared/supabase.js';
 
 const MODEL = 'claude-opus-5';
@@ -76,7 +76,7 @@ export async function onRequestPost({ request, env }) {
   try {
     requireEnv(env, ['ANTHROPIC_API_KEY', 'SUPABASE_URL', 'SUPABASE_ANON_KEY']);
   } catch (e) {
-    return fail(e.message, 500);
+    return failSetup(e);
   }
 
   // Signed-in only: this endpoint spends money on every call.

@@ -7,7 +7,7 @@
  * Everything here must tolerate being delivered twice. Stripe guarantees
  * at-least-once, and a retry after a timeout is normal, not exceptional.
  */
-import { json, fail, requireEnv } from '../_shared/http.js';
+import { json, fail, requireEnv, failSetup } from '../_shared/http.js';
 import { verifyWebhook } from '../_shared/stripe.js';
 import { sbAdmin } from '../_shared/supabase.js';
 
@@ -15,7 +15,7 @@ export async function onRequestPost({ request, env }) {
   try {
     requireEnv(env, ['STRIPE_WEBHOOK_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']);
   } catch (e) {
-    return fail(e.message, 500);
+    return failSetup(e);
   }
 
   // Read the body as raw text. Parsing before verifying would mean acting on

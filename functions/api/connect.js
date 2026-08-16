@@ -7,7 +7,7 @@
  * account, and the payout schedule all live on Stripe's hosted pages. We never
  * see or store any of it — just the account id.
  */
-import { json, fail, requireEnv } from '../_shared/http.js';
+import { json, fail, requireEnv, failSetup } from '../_shared/http.js';
 import { stripe } from '../_shared/stripe.js';
 import { sbAdmin, requireUser } from '../_shared/supabase.js';
 
@@ -15,7 +15,7 @@ export async function onRequestPost({ request, env }) {
   try {
     requireEnv(env, ['STRIPE_SECRET_KEY', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ANON_KEY']);
   } catch (e) {
-    return fail(e.message, 500);
+    return failSetup(e);
   }
 
   const { user, error } = await requireUser(request, env);
@@ -66,7 +66,7 @@ export async function onRequestGet({ request, env }) {
   try {
     requireEnv(env, ['STRIPE_SECRET_KEY', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ANON_KEY']);
   } catch (e) {
-    return fail(e.message, 500);
+    return failSetup(e);
   }
 
   const { user, error } = await requireUser(request, env);

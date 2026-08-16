@@ -9,7 +9,7 @@
  * It goes through the anon key rather than service_role, so RLS is the thing
  * deciding what's public — not a hand-maintained column list that could drift.
  */
-import { fail, requireEnv } from '../_shared/http.js';
+import { fail, requireEnv, failSetup } from '../_shared/http.js';
 
 const LIMIT = 50;
 
@@ -17,7 +17,7 @@ export async function onRequestGet({ request, env }) {
   try {
     requireEnv(env, ['SUPABASE_URL', 'SUPABASE_ANON_KEY']);
   } catch (e) {
-    return fail(e.message, 500);
+    return failSetup(e);
   }
 
   const site = (env.SITE_URL || new URL(request.url).origin).replace(/\/$/, '');

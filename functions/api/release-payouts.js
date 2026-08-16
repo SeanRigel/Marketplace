@@ -9,7 +9,7 @@
  * shared secret. Point any scheduler at it (Supabase pg_cron, a GitHub Action, or
  * cron-job.org); daily is plenty. See README for the exact setup.
  */
-import { json, fail, requireEnv } from '../_shared/http.js';
+import { json, fail, requireEnv, failSetup } from '../_shared/http.js';
 import { stripe } from '../_shared/stripe.js';
 import { sbAdmin } from '../_shared/supabase.js';
 
@@ -24,7 +24,7 @@ export async function onRequestPost({ request, env }) {
   try {
     requireEnv(env, ['STRIPE_SECRET_KEY', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'CRON_SECRET']);
   } catch (e) {
-    return fail(e.message, 500);
+    return failSetup(e);
   }
 
   const provided = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
