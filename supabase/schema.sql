@@ -43,6 +43,18 @@ create policy "own profile update"
 -- never by the browser. Lock it out of client writes now so the hole never exists.
 revoke update (stripe_connect_id) on public.profiles from anon, authenticated;
 
+-- ...and out of client READS, which is a separate grant and easy to forget.
+-- "profiles are public" is `using (true)`, so without this every visitor could
+-- pull the whole seller roster's Connect account ids straight off
+-- /rest/v1/profiles?select=stripe_connect_id. The seller_public view exists to
+-- decide what is public; it only means something if the table underneath it is
+-- not readable column-for-column.
+--
+-- Safe to revoke: nothing in the browser reads this column. Every server path
+-- that needs it (connect.js, checkout.js, release-payouts.js) goes through
+-- sbAdmin with service_role, which column privileges do not restrict.
+revoke select (stripe_connect_id) on public.profiles from anon, authenticated;
+
 -- A profile row must exist for every user; do it in a trigger so signup can't
 -- half-succeed and leave an authenticated user with no profile.
 create or replace function public.handle_new_user()

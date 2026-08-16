@@ -16,6 +16,13 @@ alter table public.profiles
 revoke update (stripe_charges_enabled, stripe_payouts_enabled, stripe_details_submitted)
   on public.profiles from anon, authenticated;
 
+-- Reads too — same reasoning as stripe_connect_id in schema.sql. These flags say
+-- which sellers have finished onboarding and can take money, which is nobody
+-- else's business. The seller's own dashboard gets them from /api/connect, which
+-- reads with service_role, so revoking here costs the app nothing.
+revoke select (stripe_charges_enabled, stripe_payouts_enabled, stripe_details_submitted)
+  on public.profiles from anon, authenticated;
+
 -- ---------------------------------------------------------------- purchases
 alter table public.purchases
   add column if not exists stripe_checkout_session_id text,

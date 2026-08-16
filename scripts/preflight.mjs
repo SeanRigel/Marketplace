@@ -63,6 +63,33 @@ if (env.STRIPE_SECRET_KEY?.startsWith('sk_live_')) {
   meh('Using a LIVE Stripe key', 'Real cards will be charged. Use sk_test_ until the whole loop works.');
 }
 
+/* Demo isolation — the gate before strangers can list.
+ *
+ * Not a payments problem, which is exactly why it gets said out loud here:
+ * nothing else in this script would ever notice. Checked before the early exit
+ * below because it reads a local file and needs no network. See ROADMAP.md,
+ * Stage 3. */
+head('Demo isolation');
+{
+  const cfg = existsSync('config.js') ? readFileSync('config.js', 'utf8') : '';
+  const m = cfg.match(/demoOrigin\s*:\s*'([^']*)'/);
+  const demoOrigin = m ? m[1].trim() : null;
+  const siteUrl = (env.SITE_URL || '').replace(/\/$/, '');
+
+  if (demoOrigin === null) {
+    meh('config.js has no demoOrigin setting',
+      'Demos stay on the app origin until you add it.');
+  } else if (!demoOrigin) {
+    meh('demoOrigin is blank — first-party demos share the app origin',
+      'Fine while every demo in demos/ is your own code. Point it at a separate\n      origin (e.g. https://demos.yourdomain.com) BEFORE accepting a seller demo.');
+  } else if (siteUrl && demoOrigin.replace(/\/$/, '') === siteUrl) {
+    bad('demoOrigin is the same origin as SITE_URL',
+      'That defeats the point — a seller demo could reach into the app page.\n      Use a genuinely different origin.');
+  } else {
+    ok('Demos are served from a separate origin', demoOrigin);
+  }
+}
+
 /* Anything past here needs to actually reach the services. */
 if (stillPlaceholder) {
   console.log('\n\x1b[33mPlaceholders present — skipping live checks.\x1b[0m');
@@ -127,7 +154,12 @@ if (supabaseUp) {
 // The big one: repo_url is the product. Public read = every template is free.
 const repoLeak = await sb('/listings?select=repo_url&limit=1');
 if (repoLeak.ok && Array.isArray(repoLeak.json)) {
-  bad('PUBLIC CAN READ repo_url', 'Column privileges were not applied. Re-run supabase/schema.sql.');
+  // Not "re-run schema.sql": the later files change listings_with_seller's column
+  // list, and CREATE OR REPLACE VIEW cannot reorder columns, so that script now
+  // aborts partway with a confusing error. Give the one statement that fixes it.
+  bad('PUBLIC CAN READ repo_url',
+      'Column privileges were not applied. Run this in the SQL editor:\n' +
+      '      revoke select (repo_url) on public.listings from anon, authenticated;');
 } else {
   ok('repo_url is not publicly readable', `anon got ${repoLeak.status}`);
 }
@@ -155,6 +187,27 @@ if (draftsView.ok && draftsView.json?.length) {
       'The view is missing security_invoker = on. Run supabase/reviews_and_health.sql.');
 } else {
   ok('Drafts are not visible through the view');
+}
+
+// Same class of bug one table over: "profiles are public" is `using (true)`, so
+// the Stripe columns are only private if they are revoked at the column level.
+const connectLeak = await sb('/profiles?select=stripe_connect_id&limit=1');
+if (connectLeak.ok) {
+  bad('PUBLIC CAN READ stripe_connect_id',
+      'Every seller\'s Connect account id is exposed. Run this in the SQL editor:\n' +
+      '      revoke select (stripe_connect_id) on public.profiles from anon, authenticated;');
+} else {
+  ok('stripe_connect_id is not publicly readable', `anon got ${connectLeak.status}`);
+}
+
+const connectFlagLeak = await sb('/profiles?select=stripe_charges_enabled&limit=1');
+if (connectFlagLeak.ok) {
+  bad('PUBLIC CAN READ Stripe onboarding flags',
+      'Run this in the SQL editor:\n' +
+      '      revoke select (stripe_charges_enabled, stripe_payouts_enabled,\n' +
+      '        stripe_details_submitted) on public.profiles from anon, authenticated;');
+} else {
+  ok('Stripe onboarding flags are not publicly readable', `anon got ${connectFlagLeak.status}`);
 }
 
 // Health data is written by the checker, never by a seller marking their own
