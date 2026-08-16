@@ -1003,5 +1003,92 @@
     };
   }
 
+  /* ------------------------------------------------------------- URL safety
+   *
+   * Seller-supplied URLs are hostile input. Two separate problems here, and
+   * conflating them is how one of them survives.
+   *
+   * 1. SCHEME. `esc()` makes a string safe to sit *inside* HTML. It does not
+   *    make it safe to *be* an href or a src — `javascript:...` passes through
+   *    escaping completely intact. A buyer clicking "Open in a new tab" on a
+   *    hostile listing would run the seller's code in this page, next to the
+   *    session token in localStorage. Only http and https ever get through.
+   *
+   * 2. ORIGIN. An iframe holding `allow-same-origin` whose src is on *our*
+   *    origin can reach into the parent page. Cross-origin demos are fine —
+   *    the browser enforces the boundary for us, which is why a seller hosting
+   *    on their own domain needs no special handling. Same-origin demos are
+   *    fine only while every file under demos/ is our own code.
+   *
+   *    Set `demoOrigin` in config.js (e.g. https://demos.yourdomain.com) and
+   *    first-party demos are served from there instead — at which point they
+   *    are cross-origin like everyone else's and the exception below stops
+   *    applying to anything. That is the switch to flip before you accept a
+   *    seller-submitted demo.
+   */
+
+  var DEMO_PATH = '/demos/';
+  var SANDBOX_BASE = 'allow-scripts allow-forms allow-popups allow-modals allow-downloads';
+
+  /* Returns a URL object only for http(s). Anything else — javascript:, data:,
+   * blob:, file: — comes back null and the caller must render no link at all. */
+  function safeUrl(raw) {
+    if (!raw) return null;
+    var u;
+    try { u = new URL(String(raw).trim(), location.href); } catch (e) { return null; }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    return u;
+  }
+
+  /* href-ready string, or '' if the URL is not safe to link. */
+  function safeHref(raw) {
+    var u = safeUrl(raw);
+    return u ? u.href : '';
+  }
+
+  /* Ours, not a seller's. Tested against the *resolved* pathname so that
+   * "demos/../app.html" normalises to "/app.html" and fails, as it should. */
+  function isFirstPartyDemo(u) {
+    return !!u && u.origin === location.origin && u.pathname.indexOf(DEMO_PATH) === 0;
+  }
+
+  /* What the listing page needs to decide how (and whether) to embed a demo. */
+  function demoFrame(raw) {
+    var u = safeUrl(raw);
+    if (!u) return { ok: false, src: '', sandbox: SANDBOX_BASE, reason: 'scheme' };
+
+    // Move our own demos off this origin once demoOrigin is configured.
+    if (CFG.demoOrigin && isFirstPartyDemo(u)) {
+      var moved = safeUrl(String(CFG.demoOrigin).replace(/\/$/, '') + u.pathname + u.search);
+      if (moved) u = moved;
+    }
+
+    var sameOrigin = u.origin === location.origin;
+
+    // Cross-origin: the browser keeps the boundary, so allow-same-origin only
+    // lets the demo keep its *own* origin. This is the normal, safe case.
+    if (!sameOrigin) {
+      return { ok: true, src: u.href, sandbox: SANDBOX_BASE + ' allow-same-origin', reason: 'cross-origin' };
+    }
+
+    // Same-origin and ours: allowed, because we wrote the files. Without
+    // allow-same-origin these demos get an opaque origin, their localStorage
+    // throws, and they render blank.
+    if (isFirstPartyDemo(u)) {
+      return { ok: true, src: u.href, sandbox: SANDBOX_BASE + ' allow-same-origin', reason: 'first-party' };
+    }
+
+    // Same-origin and not ours. Never embed this with same-origin access.
+    return { ok: false, src: u.href, sandbox: SANDBOX_BASE, reason: 'same-origin' };
+  }
+
+  window.FKUrl = {
+    safeUrl: safeUrl,
+    safeHref: safeHref,
+    demoFrame: demoFrame,
+    isFirstPartyDemo: isFirstPartyDemo,
+    SANDBOX_BASE: SANDBOX_BASE
+  };
+
   window.DB = LIVE ? SupabaseBackend() : LocalBackend();
 })();

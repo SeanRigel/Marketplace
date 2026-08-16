@@ -155,7 +155,7 @@
         <span class="badge badge-live"><span class="dot"></span>live</span>
       </div>
       <iframe id="hero-frame" title="Live demo preview" referrerpolicy="no-referrer"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"></iframe>
+              sandbox="allow-scripts allow-forms allow-popups allow-modals"></iframe>
       <div class="cap">Not a screenshot. That's a real tool running, seeded with demo data.</div>
     </div>
   </div>
@@ -282,7 +282,7 @@
           <span class="badge badge-live"><span class="dot"></span>live sandbox</span>
         </div>
         <iframe class="demo-frame" id="m-frame" title="Live demo" loading="lazy" referrerpolicy="no-referrer"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"></iframe>
+                sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"></iframe>
         <div class="demo-note" id="m-note"></div>
       </div>
       <div class="side">
@@ -433,11 +433,15 @@
   });
 
   /* ---------- hero demo ---------- */
+  /* Once real listings load, `demo` is seller-supplied and gets the same
+   * treatment as anywhere else — see the URL safety notes in app/db.js. */
   function paintHero() {
-    var first = LISTINGS.filter(function (l) { return l.demo; })[0];
+    var first = LISTINGS.map(function (l) { return FKUrl.demoFrame(l.demo); })
+                        .filter(function (f) { return f.ok; })[0];
     if (!first) return;
-    $('hero-addr').textContent = first.demo;
-    $('hero-frame').src = first.demo;
+    $('hero-addr').textContent = first.src;
+    $('hero-frame').setAttribute('sandbox', first.sandbox);
+    $('hero-frame').src = first.src;
   }
 
   /* ---------- modal ---------- */
@@ -452,9 +456,10 @@
       (l.demo ? '<span class="badge badge-live"><span class="dot"></span>Live demo</span>' : '') +
       '<span class="badge">' + esc(CATS[l.category] || l.category) + '</span>' +
       '<span class="badge">by ' + esc(l.seller.name) + '</span>';
-    $('m-url').textContent = l.demo || '—';
+    var df = FKUrl.demoFrame(l.demo);
+    $('m-url').textContent = df.ok ? df.src : '—';
     $('m-note').innerHTML = 'Real running instance with demo data. ' +
-      (l.demo ? '<a href="' + esc(l.demo) + '" target="_blank" rel="noopener">Open in a new tab ↗</a>' : '');
+      (df.ok ? '<a href="' + esc(df.src) + '" target="_blank" rel="noopener">Open in a new tab ↗</a>' : '');
     $('m-price').textContent = money(l.priceCents);
     $('m-deploy').textContent = l.deployMinutes ? '~' + l.deployMinutes + ' min' : 'see listing';
     $('m-services').textContent = (l.services || []).join(', ') || 'see listing';
@@ -465,7 +470,8 @@
     }).join('');
     $('m-buy').setAttribute('href', l.href || '#join');
     $('m-buy').textContent = l.href ? 'View full listing →' : 'Buy — early access';
-    frame.src = l.demo || 'about:blank';
+    frame.setAttribute('sandbox', df.sandbox);
+    frame.src = df.ok ? df.src : 'about:blank';
     modal.classList.add('open');
     document.body.style.overflow = 'hidden';
     $('m-close').focus();

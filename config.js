@@ -6,10 +6,23 @@
  * never the service_role key) and signups go to the Supabase `waitlist`
  * table created by supabase/waitlist.sql.
  */
+/* DEMO ORIGIN — set this before you accept a seller-submitted demo.
+ *
+ * Demos under demos/ are served from this same origin today. That is only safe
+ * because every one of those files is our own code: an iframe with
+ * allow-same-origin that is *also* same-origin with this page can reach into
+ * it. Point this at a separate origin (e.g. https://demos.yourdomain.com,
+ * another Pages project serving the same demos/ directory) and first-party
+ * demos move there, becoming cross-origin like every seller's — at which point
+ * the browser enforces the boundary instead of us.
+ *
+ * Leave blank for local development. See ROADMAP.md, Stage 3.
+ */
 window.FORKABLE_CONFIG = {
   brand: 'Forkable',
   supabaseUrl: '',
   supabaseAnonKey: '',
+  demoOrigin: '',
 };
 
 /* Featured listings.

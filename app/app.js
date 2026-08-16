@@ -35,6 +35,53 @@
     return (tags || []).map(function (t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('');
   }
 
+  /* Repo links go to buyers who have paid, which is exactly the audience worth
+   * attacking. A non-http(s) repo_url renders as plain text, never a link. */
+  function repoLink(rawUrl) {
+    var href = FKUrl.safeHref(rawUrl);
+    if (!href) {
+      return '<div class="hint">The seller\'s repository link isn\'t a valid web ' +
+        'address. Contact them, or refund.</div>';
+    }
+    return '<a class="repo" href="' + esc(href) + '" target="_blank" rel="noopener">' +
+      esc(href) + ' ↗</a>';
+  }
+
+  /* The demo panel on a listing page.
+   *
+   * Every branch that refuses to embed is a security decision, not a styling
+   * one — see the URL safety notes in db.js. A seller can put anything in
+   * demo_url, so this never trusts it enough to build an href from the raw
+   * string; FKUrl hands back a vetted src or nothing. */
+  function demoBox(rawUrl) {
+    if (!rawUrl) {
+      return '<div class="no-demo">No demo URL on this listing yet.<br>' +
+        'A listing without a working demo will not pass review.</div>';
+    }
+
+    var f = FKUrl.demoFrame(rawUrl);
+
+    if (!f.ok && f.reason === 'scheme') {
+      return '<div class="no-demo">This demo link isn\'t a valid web address.<br>' +
+        'Only http and https links can be shown here.</div>';
+    }
+
+    if (!f.ok && f.reason === 'same-origin') {
+      return '<div class="no-demo">This demo is hosted on the marketplace\'s own ' +
+        'domain, so it can\'t be embedded safely.<br>' +
+        'Host it on your own domain and update the listing.</div>';
+    }
+
+    return '<div class="chrome"><div class="lights"><i></i><i></i><i></i></div>' +
+        '<div class="addr">' + esc(f.src) + '</div>' +
+        '<span class="badge badge-live"><span class="dot"></span>live sandbox</span></div>' +
+      '<iframe class="demo-frame" title="Live demo" referrerpolicy="no-referrer" ' +
+        'sandbox="' + esc(f.sandbox) + '" ' +
+        'src="' + esc(f.src) + '"></iframe>' +
+      '<div class="demo-note">Real running instance with demo data. ' +
+        '<a href="' + esc(f.src) + '" target="_blank" rel="noopener">Open in a new tab ↗</a></div>';
+  }
+
   /* Stable hue per listing so generated covers look designed, not random. */
   function hue(seed) {
     var h = 0, s = String(seed || '');
@@ -317,17 +364,7 @@
 
         '<div class="detail"><div>' +
           '<div class="demo-box">' +
-            (l.demo_url
-              ? '<div class="chrome"><div class="lights"><i></i><i></i><i></i></div>' +
-                  '<div class="addr">' + esc(l.demo_url) + '</div>' +
-                  '<span class="badge badge-live"><span class="dot"></span>live sandbox</span></div>' +
-                '<iframe class="demo-frame" title="Live demo" referrerpolicy="no-referrer" ' +
-                  'sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads" ' +
-                  'src="' + esc(l.demo_url) + '"></iframe>' +
-                '<div class="demo-note">Real running instance with demo data. ' +
-                  '<a href="' + esc(l.demo_url) + '" target="_blank" rel="noopener">Open in a new tab ↗</a></div>'
-              : '<div class="no-demo">No demo URL on this listing yet.<br>' +
-                  'A listing without a working demo will not pass review.</div>') +
+            demoBox(l.demo_url) +
           '</div>' +
 
           (l.long_description ? '<div class="prose"><h2>What it is</h2>' +
@@ -398,9 +435,7 @@
           (l.tech_stack_tags && l.tech_stack_tags.length
             ? '<div><label>Stack</label><div class="tags">' + tagLinks(l.tech_stack_tags) + '</div>' +
               '<div class="hint">Click a tag to find other tools on the same stack.</div></div>' : '') +
-          (l.repo_url ? '<div><label>Repository</label>' +
-            '<a class="repo" href="' + esc(l.repo_url) + '" target="_blank" rel="noopener">' +
-            esc(l.repo_url) + ' ↗</a></div>' : '') +
+          (l.repo_url ? '<div><label>Repository</label>' + repoLink(l.repo_url) + '</div>' : '') +
         '</div></div>';
 
       // Changelog: seller sees an editor; a buyer sees which entries landed after
@@ -1241,10 +1276,14 @@
           { ok: d.title.length >= 8, label: 'Title that says what it is', required: false },
           { ok: d.short_description.length >= 40, label: 'Short description (40+ chars)', required: false },
           { ok: d.long_description.length >= 120, label: 'Long description (120+ chars)', required: false },
-          { ok: !!d.demo_url, label: 'Working demo URL', required: true,
-            why: 'This is the entire differentiator. No demo, no listing.' },
+          { ok: !!d.demo_url && !!FKUrl.safeUrl(d.demo_url), label: 'Working demo URL', required: true,
+            why: 'This is the entire differentiator. No demo, no listing. It must be an http or https address.' },
           { ok: (d.setup_instructions || '').length >= 80, label: 'Setup instructions (80+ chars)', required: true,
             why: 'We promise buyers deploy in under an hour. That needs real docs.' },
+          // Not required to *have* a repo link, but a link that isn't http(s) never
+          // goes live — the render side refuses to draw it anyway.
+          { ok: !d.repo_url || !!FKUrl.safeUrl(d.repo_url), label: 'Repo URL is a web address', required: true,
+            why: 'Only http and https links are allowed.' },
           { ok: !!d.repo_url, label: 'Repo URL', required: false },
           { ok: d.tech_stack_tags.length >= 2, label: 'At least 2 stack tags', required: false },
           { ok: d.price_cents > 0, label: 'A price', required: false }
@@ -1455,8 +1494,7 @@
               '<div>' +
                 '<label>Repository</label>' +
                 (l && l.repo_url
-                  ? '<a class="repo" href="' + esc(l.repo_url) + '" target="_blank" rel="noopener">' +
-                    esc(l.repo_url) + ' ↗</a>'
+                  ? repoLink(l.repo_url)
                   : '<div class="hint">' + (p.status === 'refunded'
                       ? 'Access ended with the refund.'
                       : 'Unlocking — reload in a moment.') + '</div>') +
