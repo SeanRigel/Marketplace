@@ -8,6 +8,10 @@ covered by a refund window.
 Stripe Connect checkout with held payouts and a self-service refund window; reviews,
 seller profiles, search and sort, and automated demo health checking.
 
+> **Lost? Open [ROADMAP.md](ROADMAP.md)** — what's done, what's next, what's blocking,
+> and which of these four files to read. This README explains how the code works; the
+> roadmap explains where the project is.
+
 ---
 
 ## What's here
