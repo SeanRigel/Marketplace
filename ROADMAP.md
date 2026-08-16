@@ -1,6 +1,6 @@
 # Forkable — where we stand
 
-Last updated 2026-08-11.
+Last updated 2026-08-16.
 
 This is the map. When you're lost, start here.
 
@@ -25,7 +25,9 @@ a Supabase project, a Stripe account, and a deploy, all of which need accounts o
 you can create. The site could be publicly live today; only *payments* wait on Stripe's
 review queue.
 
-**Right now:** 11 files changed and uncommitted from today's session. Commit them.
+**Right now:** the working tree is clean and the security pass from 2026-08-11 is
+committed. The repo lives on GitHub and is worked on from Claude Code sessions in the
+browser. Next real step is Stage 1 — get it on the internet.
 
 ---
 
@@ -223,12 +225,15 @@ it can't come back.
 
 ## Check status yourself
 
+From the repo root — `~/marketplace` on the Mac, wherever it's checked out in a cloud
+session:
+
 ```bash
-cd ~/marketplace && ./scripts/test.sh
+./scripts/test.sh
 ```
 
 ```bash
-cd ~/marketplace && node scripts/preflight.mjs
+node scripts/preflight.mjs
 ```
 
 `test.sh` needs no accounts and should always pass. `preflight.mjs` tells you in plain

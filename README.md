@@ -159,11 +159,14 @@ the nav/`<title>` of `index.html` — swap it whenever you land on a real name.
 ## Run it locally
 
 ```bash
-python3 -m http.server 4321 --directory ~/marketplace
+python3 -m http.server 4321
 ```
 
-Then open <http://localhost:4321>. It must be served over HTTP, not opened as a
-`file://` path — the demo iframes won't load otherwise.
+Run it from the repo root, then open <http://localhost:4321>. It must be served over
+HTTP, not opened as a `file://` path — the demo iframes won't load otherwise.
+
+That serves the static site only. `/api/*` routes are Pages Functions and need
+`npx wrangler pages dev .` instead.
 
 ## The demos are real
 
