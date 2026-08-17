@@ -7,6 +7,8 @@ this repo — it deliberately does not repeat what the other docs say.
 | File | What it's for |
 | --- | --- |
 | `ROADMAP.md` | Where the project stands. Start here |
+| `HANDOFF.md` | Cold-start brief for a fresh session — paste it as the first message |
+| `PUSH-TO-GITHUB.md` | Getting the repo off this Mac (it has never been pushed) |
 | `START-HERE.md` | Click-by-click for the next few hours of setup |
 | `SETUP.md` | Per-system reference (Supabase, Stripe, Cloudflare) |
 | `README.md` | How the code works and why it's built that way |

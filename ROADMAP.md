@@ -26,8 +26,13 @@ you can create. The site could be publicly live today; only *payments* wait on S
 review queue.
 
 **Right now:** the working tree is clean and the security pass from 2026-08-11 is
-committed. The repo lives on GitHub and is worked on from Claude Code sessions in the
-browser. Next real step is Stage 1 — get it on the internet.
+committed. Next real step is Stage 1 — get it on the internet.
+
+⚠️ **This repo is Mac-only. It has never been pushed anywhere** — verified 2026-08-17:
+no git remote, no GitHub auth on this machine, 16 commits living in one directory. An
+earlier version of this file claimed it "lives on GitHub"; that was never true. There is
+**no off-machine copy of 5,200 lines of finished work.** See `PUSH-TO-GITHUB.md` — it is
+one command once you've authenticated, and it is also what makes cloud sessions possible.
 
 ---
 
