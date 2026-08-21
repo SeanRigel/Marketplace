@@ -253,9 +253,9 @@
       written — because on this project that distinction has burned you before.
     </p>
     <div class="meta">
-      <span><b>3</b> commits</span>
-      <span><b>20</b> files changed</span>
-      <span><b>+1,139</b> / <b>−88</b> lines</span>
+      <span><b>5</b> commits</span>
+      <span><b>23</b> files changed</span>
+      <span><b>+1,785</b> / <b>−128</b> lines</span>
       <span><b>97</b> new assertions</span>
       <span><b>203</b> total, all passing</span>
     </div>
@@ -296,6 +296,11 @@
             <tr>
               <td>Local-mode rules pinned</td>
               <td>30 assertions against the real backend</td>
+              <td><span class="chip chip-verified">Verified</span></td>
+            </tr>
+            <tr>
+              <td>Handoff docs match reality</td>
+              <td>Every stale claim swept and corrected</td>
               <td><span class="chip chip-verified">Verified</span></td>
             </tr>
             <tr>
@@ -519,6 +524,27 @@ git push origin main</code></pre>
         </div>
       </div>
     </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Housekeeping</div>
+      <h2>The handoff docs were lying</h2>
+    </div>
+    <p class="note">
+      <code>HANDOFF.md</code> is the file a fresh session starts from, and most of what
+      it asserted had stopped being true: that the repo had never been pushed, that no
+      accounts existed, that the app was in local mode. A cold-start brief that's wrong
+      about the starting state is worse than none, so it's been corrected — along with
+      two things a session arrives not knowing. It <em>can</em> reach Supabase and prove
+      database guarantees directly, which is exactly what earlier work failed to do. And
+      it <em>cannot</em> push, so claiming otherwise would be false.
+    </p>
+    <p class="note">
+      Scars 6, 7 and 8 are written up. Scar 6 is the one worth reading twice: scar 5's
+      diagnosis was right and its remedy was a silent no-op, and nothing caught it for
+      months because the remedy was never executed against a database.
+    </p>
   </section>
 
   <hr>
