@@ -1,0 +1,533 @@
+<title>Forkable Security Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;1,400&display=swap">
+
+<style>
+  /* ---------- tokens: complete light palette on bare :root ---------- */
+  :root {
+    --paper:      #F4F6F8;
+    --surface:    #FFFFFF;
+    --surface-2:  #EDF1F5;
+    --ink:        #131920;
+    --ink-soft:   #3D4A57;
+    --muted:      #5C6B7A;
+    --rule:       #D8E0E7;
+    --rule-soft:  #E7ECF1;
+
+    --accent:     #1D5B79;
+    --accent-ink: #FFFFFF;
+
+    --critical:   #9B2C2C;
+    --critical-bg:#F7E9E9;
+    --verified:   #2F6B4F;
+    --verified-bg:#E6F1EB;
+    --pending:    #8A5A1B;
+    --pending-bg: #F7EEDF;
+
+    --shadow: 0 1px 2px rgba(19,25,32,.05), 0 8px 24px -12px rgba(19,25,32,.18);
+
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    --serif: "IBM Plex Serif", ui-serif, Georgia, Cambria, serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #0E1319;
+      --surface:    #161D26;
+      --surface-2:  #1C2530;
+      --ink:        #E6EDF3;
+      --ink-soft:   #C2CDD8;
+      --muted:      #8B9BAA;
+      --rule:       #2A353F;
+      --rule-soft:  #212B35;
+
+      --accent:     #6BA8C9;
+      --accent-ink: #0E1319;
+
+      --critical:   #E58F8F;
+      --critical-bg:#2E1C1C;
+      --verified:   #74C39A;
+      --verified-bg:#152719;
+      --pending:    #DCA954;
+      --pending-bg: #2A2113;
+
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #0E1319;
+    --surface:    #161D26;
+    --surface-2:  #1C2530;
+    --ink:        #E6EDF3;
+    --ink-soft:   #C2CDD8;
+    --muted:      #8B9BAA;
+    --rule:       #2A353F;
+    --rule-soft:  #212B35;
+
+    --accent:     #6BA8C9;
+    --accent-ink: #0E1319;
+
+    --critical:   #E58F8F;
+    --critical-bg:#2E1C1C;
+    --verified:   #74C39A;
+    --verified-bg:#152719;
+    --pending:    #DCA954;
+    --pending-bg: #2A2113;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+  }
+
+  /* ---------- base ---------- */
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 3.5rem 1.5rem 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3rem;
+  }
+
+  h1, h2, h3 { text-wrap: balance; margin: 0; letter-spacing: -0.015em; }
+  h1 { font-size: 2.1rem; font-weight: 700; line-height: 1.15; }
+  h2 { font-size: 1.3rem; font-weight: 600; }
+  h3 { font-size: 1.02rem; font-weight: 600; }
+  p  { margin: 0; }
+  a  { color: var(--accent); }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .72rem;
+    font-weight: 500;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* ---------- masthead ---------- */
+  .masthead { display: flex; flex-direction: column; gap: 1rem; }
+  .masthead .lede {
+    font-family: var(--serif);
+    font-size: 1.12rem;
+    line-height: 1.65;
+    color: var(--ink-soft);
+    max-width: 38rem;
+  }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: .5rem 1.25rem;
+    font-family: var(--mono); font-size: .78rem; color: var(--muted);
+    border-top: 1px solid var(--rule); padding-top: .85rem;
+  }
+  .meta b { color: var(--ink-soft); font-weight: 500; }
+
+  /* ---------- ledger ---------- */
+  .ledger { border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: var(--surface); }
+  .ledger-head {
+    background: var(--surface-2);
+    padding: .7rem 1rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .ledger-scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .89rem; }
+  th, td { text-align: left; padding: .62rem 1rem; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  th {
+    font-family: var(--mono); font-size: .7rem; font-weight: 500;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; font-family: var(--mono); white-space: nowrap; }
+
+  /* ---------- status chips: the doc's core signal ---------- */
+  .chip {
+    display: inline-flex; align-items: center; gap: .38rem;
+    font-family: var(--mono); font-size: .68rem; font-weight: 500;
+    letter-spacing: .06em; text-transform: uppercase;
+    padding: .2rem .5rem; border-radius: 3px; white-space: nowrap;
+  }
+  .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+  .chip-verified { color: var(--verified); background: var(--verified-bg); }
+  .chip-pending  { color: var(--pending);  background: var(--pending-bg); }
+  .chip-you      { color: var(--accent);   background: var(--surface-2); }
+
+  /* ---------- findings ---------- */
+  .findings { display: flex; flex-direction: column; gap: 1.25rem; }
+  .finding {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--critical);
+    border-radius: 6px;
+    padding: 1.15rem 1.25rem;
+    display: flex; flex-direction: column; gap: .8rem;
+    box-shadow: var(--shadow);
+  }
+  .finding.is-quality { border-left-color: var(--pending); }
+  .finding.is-clean   { border-left-color: var(--verified); }
+  .finding-top { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; justify-content: space-between; }
+  .finding h3 { flex: 1 1 18rem; }
+  .finding p { font-size: .93rem; color: var(--ink-soft); }
+  .where {
+    font-family: var(--mono); font-size: .76rem; color: var(--muted);
+  }
+
+  code {
+    font-family: var(--mono); font-size: .84em;
+    background: var(--surface-2); padding: .1em .34em; border-radius: 3px;
+  }
+  pre {
+    font-family: var(--mono); font-size: .8rem; line-height: 1.55;
+    background: var(--surface-2); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 5px;
+    padding: .85rem 1rem; margin: 0; overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; }
+
+  .proof { border: 1px solid var(--rule); border-radius: 5px; overflow: hidden; }
+  .proof-label {
+    font-family: var(--mono); font-size: .68rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted);
+    padding: .45rem .8rem; background: var(--surface-2); border-bottom: 1px solid var(--rule);
+  }
+  .proof .ledger-scroll table { font-size: .82rem; }
+  .yes { color: var(--critical); font-weight: 600; }
+  .no  { color: var(--verified); font-weight: 600; }
+
+  /* ---------- callout ---------- */
+  .callout {
+    background: var(--pending-bg);
+    border: 1px solid color-mix(in srgb, var(--pending) 35%, transparent);
+    border-radius: 6px; padding: 1.1rem 1.25rem;
+    display: flex; flex-direction: column; gap: .6rem;
+  }
+  .callout h3 { color: var(--pending); }
+  .callout p { font-size: .93rem; color: var(--ink-soft); }
+
+  /* ---------- todo ---------- */
+  .todo { display: flex; flex-direction: column; gap: .75rem; counter-reset: step; }
+  .task {
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 6px;
+    padding: 1rem 1.15rem; display: flex; gap: .9rem; align-items: flex-start;
+  }
+  .task::before {
+    counter-increment: step; content: counter(step);
+    font-family: var(--mono); font-size: .78rem; font-weight: 600;
+    color: var(--accent-ink); background: var(--accent);
+    width: 1.5rem; height: 1.5rem; border-radius: 50%;
+    display: grid; place-items: center; flex: none; margin-top: .1rem;
+  }
+  .task-body { display: flex; flex-direction: column; gap: .4rem; min-width: 0; }
+  .task-body strong { font-size: .97rem; font-weight: 600; }
+  .task-body p { font-size: .89rem; color: var(--muted); }
+
+  section { display: flex; flex-direction: column; gap: 1.1rem; }
+  .section-head { display: flex; flex-direction: column; gap: .3rem; }
+  .note { font-size: .87rem; color: var(--muted); }
+
+  hr { border: none; border-top: 1px solid var(--rule); margin: 0; }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Forkable · overnight session · 21 Aug 2026</div>
+    <h1>Three ways in, found and closed</h1>
+    <p class="lede">
+      A security pass over every server route and the client render paths. Three real
+      vulnerabilities, one of them a reopening of a bug the project already had a scar
+      for. Everything below is marked with whether it was actually proven or merely
+      written — because on this project that distinction has burned you before.
+    </p>
+    <div class="meta">
+      <span><b>3</b> commits</span>
+      <span><b>20</b> files changed</span>
+      <span><b>+1,139</b> / <b>−88</b> lines</span>
+      <span><b>97</b> new assertions</span>
+      <span><b>203</b> total, all passing</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Ledger</div>
+      <h2>What is proven, and what is not</h2>
+    </div>
+    <div class="ledger">
+      <div class="ledger-scroll">
+        <table>
+          <thead>
+            <tr><th>Work</th><th>How it was checked</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Column-privilege leak closed</td>
+              <td>Run against the live database, before and after</td>
+              <td><span class="chip chip-verified">Verified</span></td>
+            </tr>
+            <tr>
+              <td>SSRF guard on both demo routes</td>
+              <td>67 assertions, one per bypass</td>
+              <td><span class="chip chip-verified">Verified</span></td>
+            </tr>
+            <tr>
+              <td>Feed hardened against illegal XML</td>
+              <td>Reproduced the break, then the fix</td>
+              <td><span class="chip chip-verified">Verified</span></td>
+            </tr>
+            <tr>
+              <td>Supabase schema installed</td>
+              <td>Views, RLS, signup trigger all queried directly</td>
+              <td><span class="chip chip-verified">Verified</span></td>
+            </tr>
+            <tr>
+              <td>Local-mode rules pinned</td>
+              <td>30 assertions against the real backend</td>
+              <td><span class="chip chip-verified">Verified</span></td>
+            </tr>
+            <tr>
+              <td><code>import_quota.sql</code> spend cap</td>
+              <td>Never executed — connector dropped</td>
+              <td><span class="chip chip-pending">Not verified</span></td>
+            </tr>
+            <tr>
+              <td>Waitlist over real HTTP</td>
+              <td>Network policy blocks Supabase from here</td>
+              <td><span class="chip chip-you">Needs you</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="findings">
+    <div class="section-head">
+      <div class="eyebrow">Findings</div>
+      <h2>What was actually wrong</h2>
+    </div>
+
+    <article class="finding">
+      <div class="finding-top">
+        <h3>Every listing's repo URL was readable by anyone</h3>
+        <span class="chip chip-verified">Fixed</span>
+      </div>
+      <div class="where">supabase/schema.sql · supabase/payments.sql · scripts/preflight.mjs</div>
+      <p>
+        The SQL hid sensitive columns with <code>revoke select (repo_url) …</code>. That
+        statement runs clean and does nothing: a table-level grant implies every column,
+        and a column revoke cannot subtract from it. Supabase hands new tables exactly
+        that grant. So on a fresh install, the thing you are selling was free to read —
+        along with every seller's Stripe Connect ID.
+      </p>
+      <div class="proof">
+        <div class="proof-label">Proven on the live database</div>
+        <div class="ledger-scroll">
+          <table>
+            <thead>
+              <tr><th>Stage</th><th>repo_url readable</th><th>connect ID readable</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Fresh install</td><td class="yes">yes</td><td class="yes">yes</td></tr>
+              <tr><td>After the old one-liner</td><td class="yes">yes</td><td class="yes">yes</td></tr>
+              <tr><td>After the fix</td><td class="no">no</td><td class="no">no</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p>
+        This is scar #5 reopened. The original diagnosis was right and the remedy was
+        wrong, and nothing caught it because the remedy was never run against a database.
+        <code>preflight.mjs</code> detected the leak correctly but printed that same
+        broken one-liner as the cure — so following its advice gave you a clean run and
+        an unchanged leak.
+      </p>
+    </article>
+
+    <article class="finding">
+      <div class="finding-top">
+        <h3>Nine ways to write an address the SSRF filter didn't recognise</h3>
+        <span class="chip chip-verified">Fixed</span>
+      </div>
+      <div class="where">functions/api/check-demo.js → functions/_shared/net-safety.js</div>
+      <p>
+        The filter matched a dotted-quad pattern. A hostname does not have to be
+        dotted-quad to resolve, so these all sailed through to a server sitting inside
+        Cloudflare's network:
+      </p>
+      <pre><code>2130706433              → 127.0.0.1   (32-bit decimal)
+0x7f000001              → 127.0.0.1   (hex)
+0177.0.0.1              → 127.0.0.1   (octal)
+127.1                   → 127.0.0.1   (short form)
+::ffff:169.254.169.254  → cloud metadata service</code></pre>
+      <p>
+        Worse, the fetch used <code>redirect: 'follow'</code> — so even a correct filter
+        was decorative. A perfectly public URL that redirects to
+        <code>169.254.169.254</code> passed the check and was followed anyway. Redirects
+        are now resolved by hand with every hop re-checked.
+      </p>
+    </article>
+
+    <article class="finding">
+      <div class="finding-top">
+        <h3>The hourly demo checker had no address filter at all</h3>
+        <span class="chip chip-verified">Fixed</span>
+      </div>
+      <div class="where">functions/api/check-demos.js</div>
+      <p>
+        The cron sweep fetched <code>demo_url</code> straight off live listings with only
+        a protocol check. And it wasn't blind: the HTTP status and error text land in
+        <code>sandbox_instances</code>, which that seller can read back through their own
+        listing. A seller could point a demo at an internal address and read the answer.
+      </p>
+    </article>
+
+    <article class="finding is-quality">
+      <div class="finding-top">
+        <h3>One seller's title could take down the whole RSS feed</h3>
+        <span class="chip chip-verified">Fixed</span>
+      </div>
+      <div class="where">functions/api/feed.js</div>
+      <p>
+        The feed escaped <code>&lt; &gt; &amp; ' "</code> but not control characters.
+        Postgres stores a vertical tab happily; XML forbids it outright and has no escape
+        for it. One listing carrying one such byte makes the entire feed unparseable for
+        every subscriber — with no error anywhere on your side.
+      </p>
+    </article>
+
+    <article class="finding is-clean">
+      <div class="finding-top">
+        <h3>Audited and clean: Stripe onboarding, and every render path</h3>
+        <span class="chip chip-verified">No findings</span>
+      </div>
+      <div class="where">functions/api/connect.js · functions/api/checkout.js · app/app.js</div>
+      <p>
+        Worth recording as a result. In <code>connect.js</code> every query is scoped to
+        the verified user and the Connect ID is only ever written with service_role.
+        Checkout reads price from the database, never the request. And the two places in
+        the client that build a link or an iframe from seller input both run
+        <code>FKUrl</code> first, then <code>esc()</code> — URL validation for the URL,
+        escaping for the HTML, in that order. Scar #3's fix held.
+      </p>
+    </article>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Added</div>
+      <h2>What's new in the repo</h2>
+    </div>
+    <div class="ledger">
+      <div class="ledger-scroll">
+        <table>
+          <thead>
+            <tr><th>File</th><th>What it does</th><th class="num">Tests</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>_shared/net-safety.js</code></td>
+              <td>Address vetting and redirect-safe fetch, shared by both demo routes</td>
+              <td class="num">67</td>
+            </tr>
+            <tr>
+              <td><code>app/local-rules.test.mjs</code></td>
+              <td>Pins the localStorage backend to the same rules the SQL enforces</td>
+              <td class="num">30</td>
+            </tr>
+            <tr>
+              <td><code>supabase/import_quota.sql</code></td>
+              <td>Per-user and global daily cap on the paid AI route</td>
+              <td class="num">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="note">
+      The local-rules suite passed on its first run — the mock had not drifted. That's the
+      good outcome, and it can't drift silently from here. It did surface one real gap:
+      local mode applied no CHECK constraints, so it accepted a negative price and an
+      "unlimited clients" tier priced below the single-client one. Postgres refuses both.
+      Local mode is only trustworthy while it's exactly as strict as the database.
+    </p>
+  </section>
+
+  <section>
+    <div class="callout">
+      <h3>The one thing I could not prove</h3>
+      <p>
+        <code>supabase/import_quota.sql</code> has never been executed against a database.
+        The Supabase connector dropped mid-session and didn't come back. It is written,
+        not verified — the exact state scar #2 exists to warn about, so I'm not calling it
+        done. Run it, then confirm it actually denies the sixth draft in a day before
+        trusting it.
+      </p>
+      <p>
+        Separately: that cap bounds <em>calls</em>, not <em>dollars</em>. A console spend
+        cap is still a separate, necessary thing. Whether to set
+        <code>ANTHROPIC_API_KEY</code> at all is still your call — I didn't touch it.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Tomorrow</div>
+      <h2>What needs you</h2>
+    </div>
+    <div class="todo">
+      <div class="task">
+        <div class="task-body">
+          <strong>Submit the Stripe Connect profile</strong>
+          <p>Still not started, still the only thing with a multi-day review clock on it. Needs no code. Do it first, then walk away.</p>
+        </div>
+      </div>
+      <div class="task">
+        <div class="task-body">
+          <strong>Apply the patch and push</strong>
+          <p>Push still 403s from this session — the GitHub App here is read-only on the repo. All three commits are in the patch file.</p>
+          <pre><code>cd ~/marketplace
+git pull origin main
+git am &lt; ~/Downloads/forkable-security-fixes.patch
+git push origin main</code></pre>
+        </div>
+      </div>
+      <div class="task">
+        <div class="task-body">
+          <strong>Run <code>import_quota.sql</code> and test it</strong>
+          <p>Then watch it refuse the sixth draft in a day. Until you see that, treat the cap as unproven.</p>
+        </div>
+      </div>
+      <div class="task">
+        <div class="task-body">
+          <strong>Deploy, then sign up from your phone</strong>
+          <p><code>npx wrangler pages deploy .</code> — then check the row lands in Supabase. That's the one test this session's network policy blocked.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr>
+
+  <p class="note">
+    Nothing in Stage 4 was built — the fork-and-deploy wizard, sandbox automation, admin
+    moderation, multi-currency. <code>ROADMAP.md</code> says not to until there are real
+    sales and a request board to read, and building features nobody has asked for yet
+    would have been the wrong use of the night.
+  </p>
+
+</div>
