@@ -28,15 +28,20 @@ fee they were charged.
 
 ## Where the code is
 
-`~/marketplace` on Rigel's Mac. As of 2026-08-17 that was the **only** copy — no git
-remote, no GitHub auth on the machine, 17 commits in one directory. An older line in
-`ROADMAP.md` claimed the repo "lives on GitHub"; that was never true, and it's corrected
-now. `PUSH-TO-GITHUB.md` is the one-command fix (plus a `gh auth login` only Rigel can
-do), and it includes the secret audit that says the push is safe.
+`github.com/SeanRigel/Marketplace`, branch `main` — **pushed 2026-08-21**, and also at
+`~/marketplace` on Rigel's Mac. The Mac is no longer the only copy. The repo is
+**public**; the secret audit in `PUSH-TO-GITHUB.md` confirmed that is safe (`.dev.vars`
+was never committed, no live key is tracked).
 
-If you are a cloud session reading this, the push has presumably happened — sanity-check
-with `git remote -v && git log --oneline -1`. Expected HEAD is the "Add HANDOFF.md"
-commit on `main`. If you have no code at all, say so plainly; Rigel has to push it.
+Sanity-check on arrival: `git log --oneline -1`. If the tree is empty, say so plainly
+rather than reconstructing it from this file — a rebuilt copy that merely resembles the
+real one is worse than none.
+
+⚠️ **A cloud session cannot push.** The GitHub App attached to these sessions is
+read-only on this repo: `git push` and the API both return 403. Work still gets
+committed locally, but it reaches Rigel as a patch file
+(`git format-patch origin/main..HEAD --stdout`) which he applies with `git am`. Verify
+it first with `git apply --check` against `origin/main`. Do not report work as pushed.
 
 ## Read these, in this order
 
@@ -74,37 +79,46 @@ I ran both of these on the Mac just now:
 ```bash
 ./scripts/test.sh
 ```
-**All checks passed** (42 checks, no accounts/network/config needed). Run this before
-claiming anything works.
+**All checks passed** — 203 assertions, no accounts/network/config needed. Run this
+before claiming anything works.
 
 ```bash
 node scripts/preflight.mjs
 ```
-**3 passed, 6 warnings, 0 failed** — "Not configured yet." Specifically:
-- `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`
-  are all still placeholders in `.dev.vars`
-- `CRON_SECRET` is set but **too short** — needs 32+ random chars, or anyone who
-  guesses it can trigger payouts early
-- `demoOrigin` is blank (expected until Stage 3)
+Needs a real `.dev.vars`, which a cloud session does not have. Expect it to report
+placeholders and stop before the live checks — that is correct, not a failure.
 
-`config.js` is still `supabaseUrl: ''`, `supabaseAnonKey: ''` → the app is in **local
-mode**, blue banner showing. **Nothing has been deployed. No accounts exist yet.**
+**Supabase is live.** Project `Forkable` (`wtqwuvdeurvwpypejpfp`, us-west-1, free tier),
+created 2026-08-21. `config.js` carries the project URL and anon key, so the app is out
+of local mode and the blue banner is gone. Six of the seven SQL files are applied.
+
+**Stripe does not exist yet, and nothing is deployed.** No Cloudflare project, no public
+URL, no payment has ever been exercised.
 
 ## The honest status
 
-The **software is finished and tested**; nothing is half-built. What's missing is not
-code — it's a Supabase project, a Stripe account, and a deploy, all of which need
-accounts only Rigel can create. Six days have passed (last commit 2026-08-16) with no
-setup progress, so treat "still not live" as the live fact, not as a stale note.
+The **software is finished and tested**; nothing is half-built. What is missing is a
+Stripe account and a deploy, both of which need accounts only Rigel can create.
 
-**Stage 1 — get it on the internet (not started, doesn't need Stripe):**
-- [ ] Stripe Connect platform profile submitted — do FIRST then walk away; review takes days
-- [ ] Supabase project, all **6** SQL files run **in order**: `waitlist.sql`,
-      `schema.sql`, `payments.sql`, `reviews_and_health.sql` (NOT optional — this one
-      fixes the views that bypassed RLS), `changelog.sql`, `licenses_and_requests.sql`
-- [ ] URL + anon key into `config.js` → local-mode banner disappears
+**Stage 1 — get it on the internet (doesn't need Stripe):**
+- [ ] Stripe Connect platform profile submitted — do FIRST then walk away; review takes
+      days. Still not started as of 2026-08-21; this clock has never been running
+- [x] ~~Supabase project, SQL files run in order~~ — done 2026-08-21, verified against
+      the database. There are now **7** files, and the 7th is not yet applied (below)
+- [x] ~~URL + anon key into `config.js`~~ — done 2026-08-21
 - [ ] `npx wrangler pages deploy .` → public URL
-- [ ] Waitlist tested from a phone, row confirmed in Supabase
+- [ ] Waitlist tested from a phone, row confirmed in Supabase — **never exercised over
+      HTTP.** Cloud sessions are network-blocked from `*.supabase.co`, so the privileges
+      were proven at the database level but the round trip through PostgREST was not
+
+**Applied to the database, in this order:** `waitlist.sql`, `schema.sql`, `payments.sql`,
+`reviews_and_health.sql` (NOT optional — fixes the views that bypassed RLS),
+`changelog.sql`, `licenses_and_requests.sql`.
+
+⚠️ **`import_quota.sql` is written but has NEVER been executed.** It caps spending on
+`/api/import-repo`. Run it before `ANTHROPIC_API_KEY` is ever set, then confirm it
+actually denies the sixth draft in a day. Until someone watches that happen it is a
+hypothesis, not a cap.
 
 **Critical sequencing insight, easy to lose:** the landing page makes **zero** `/api/`
 calls — the waitlist posts straight to Supabase REST with the anon key, and the demos
@@ -152,7 +166,7 @@ file, issue, or commit message. `config.js` is served to browsers, so **only the
 key** may go in it; `service_role` bypasses every policy in the database and lives only
 in server env vars.
 
-## Scars — five bugs already shipped here, don't reintroduce them
+## Scars — eight bugs already shipped here, don't reintroduce them
 
 1. **Postgres views bypass RLS by default.** A view runs with its *owner's* privileges
    unless created `with (security_invoker = on)`. `listings_with_seller` served draft and
@@ -180,9 +194,42 @@ in server env vars.
    roster's Connect IDs straight off `/rest/v1/profiles`. The `seller_public` view was a
    fig leaf over a readable table.
 
+6. **A column-level `revoke select` is a silent no-op under a table-level grant.**
+   Found 2026-08-21, installing the schema into a real project for the first time. The
+   remedy scar 5 concluded with — `revoke select (stripe_connect_id) on public.profiles`
+   — runs clean and **changes nothing**, because Supabase grants `anon` table-level
+   select on new tables and a table grant implies every column. So on a fresh install
+   every Connect id and every `repo_url` was world-readable, exactly the leak scar 5 was
+   supposed to have closed. Worse, `preflight.mjs` detected it correctly but printed
+   that same broken one-liner as the cure. Fix: drop the table grant, grant back the
+   public columns computed from `information_schema`. **Scar 5's diagnosis was right and
+   its remedy was wrong, and nothing caught that for months because the remedy was never
+   run against a database. A fix you have not executed is a hypothesis.**
+
+7. **SSRF: a dotted-quad regex is not an address check, and `redirect: 'follow'` walks
+   around whatever check you do have.** Found 2026-08-21. `check-demo.js` let nine
+   spellings through (`2130706433`, `0x7f000001`, `0177.0.0.1`, `127.1`,
+   `::ffff:169.254.169.254`, CGNAT and reserved ranges). And `check-demos.js` — the cron
+   sweep, fetching `demo_url` off live listings — had **no host check at all**, with the
+   result readable by the seller via `sandbox_instances`. Both now use
+   `functions/_shared/net-safety.js` (67 assertions). Note the bug found *inside* that
+   fix: `(value & mask)` yields a **signed** 32-bit int, so every range at or above
+   `128.0.0.0` silently never matched while 10/8 and 127/8 matched fine.
+
+8. **Escaping is per-format: "we escaped it" is a different question from "is this byte
+   legal here at all".** Found 2026-08-21. The RSS branch of `/api/feed` escaped
+   `<>&'"` but not control characters, which XML 1.0 forbids outright and offers no
+   escape for. One listing containing one vertical tab makes the **entire feed**
+   unparseable for every subscriber, with no error on our side.
+
 Related: **client-side validation is not a security boundary.** The listing form runs in
 the browser; a hostile seller calls the API directly — which is exactly how the test
 listing for bug 3 was created. The render side and the database are what have to hold.
+
+Related to bug 2: `app/local-rules.test.mjs` now pins the localStorage backend to the
+same rules the SQL enforces (30 assertions). They passed first run — the mock had not
+drifted — but it can no longer drift silently. It did surface one gap: local mode applied
+no CHECK constraints, so it accepted rows Postgres refuses.
 
 **Gotcha:** don't "re-run `schema.sql`" to fix column privileges. Later SQL files
 reshape `listings_with_seller`, and `CREATE OR REPLACE VIEW` can't reorder columns, so
@@ -199,11 +246,28 @@ it aborts partway. `preflight.mjs` prints the exact one-line `revoke` instead.
 | Payout held until the refund window closes | Same reason — the hold is what makes the promise real |
 | SquadCal not listed as a 4th demo | Needs a build step, so its demo wouldn't run. Every demo must work |
 
-## What a session cannot do
+## What a session can and cannot do
 
-Create Supabase or Stripe accounts, deploy to Cloudflare, or exercise a real payment.
-Those are Rigel's. **If a task depends on one, say so plainly rather than mocking around
-it** — mocking around a database guarantee is exactly scar #2.
+This changed on 2026-08-21 and the old blanket "a session can't touch the database" is
+no longer true. Check what is actually connected before assuming either way.
+
+**Can**, when the connector is attached:
+- Supabase over MCP — create projects, apply migrations, run SQL, read advisors. The
+  entire schema install and every privilege check on 2026-08-21 was done this way. This
+  is the one thing that makes a database guarantee *provable* from a session, so use it
+  rather than reasoning about what Postgres would probably do.
+
+**Cannot:**
+- **Push to GitHub.** Read-only App; `git push` and the API both 403. Deliver a patch.
+- Create a Stripe account, or exercise a real payment.
+- Deploy to Cloudflare.
+- Reach `*.supabase.co` over plain HTTP — the egress policy blocks it, so PostgREST
+  round trips cannot be tested from here even while the MCP connector works fine.
+
+Connectors drop mid-session without warning; the Supabase one did on 2026-08-21, which
+is why `import_quota.sql` is written but unproven. **If a connector goes and a task
+depends on it, say so plainly rather than mocking around it** — mocking around a
+database guarantee is exactly scar #2, and shipping an unexecuted fix is scar #6.
 
 ## Who you're working with
 

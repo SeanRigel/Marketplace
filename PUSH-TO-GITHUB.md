@@ -1,15 +1,24 @@
 # Get this repo onto GitHub
 
-Written 2026-08-17. Two reasons to do this, in order of how much they'd hurt:
+> ✅ **Done 2026-08-21.** The repo is at `github.com/SeanRigel/Marketplace` on `main`.
+> This file is kept for the secret audit below, which is what made the push safe, and
+> for the other repos that still have no remote.
+>
+> One thing it does **not** cover, learned afterwards: a cloud session cannot push back.
+> The GitHub App attached to those sessions is read-only on this repo — `git push` and
+> the API both return 403. Work comes back as a patch file applied with `git am`.
 
-1. **There is no off-machine copy of this project.** 16 commits, ~6,100 lines of
+Written 2026-08-17. Two reasons this mattered, in order of how much they'd have hurt:
+
+1. **There was no off-machine copy of this project.** 16 commits, ~6,100 lines of
    finished, tested work, in one directory on one Mac. No remote, no backup.
 2. Cloud/browser Claude Code sessions work from a GitHub repo. Without this, a cloud
    session has no code to read.
 
-Verified state: no git remote, `gh` not authenticated, no SSH keys, no `GH_TOKEN`.
-None of your four repos (`marketplace`, `TrueStroke-AI`, `roblox-space-tycoon`,
-`second-brain`) has ever been pushed.
+State as verified on 2026-08-17: no git remote, `gh` not authenticated, no SSH keys, no
+`GH_TOKEN`. None of the four repos (`marketplace`, `TrueStroke-AI`,
+`roblox-space-tycoon`, `second-brain`) had ever been pushed. **`marketplace` now has;
+the other three still have not.**
 
 ---
 
