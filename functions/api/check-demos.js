@@ -14,6 +14,7 @@
  */
 import { json, fail, requireEnv, failSetup } from '../_shared/http.js';
 import { sbAdmin } from '../_shared/supabase.js';
+import { vetUrl, safeFetch } from '../_shared/net-safety.js';
 
 const TIMEOUT_MS = 10000;
 const FAILURES_BEFORE_ERROR = 2;   // one blip shouldn't mark a demo broken
@@ -97,14 +98,18 @@ async function probe(url) {
   // Only ever fetch http(s). A demo_url is seller-supplied text; without this a
   // seller could point the checker at internal addresses and read the response.
   let parsed;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return { ok: false, status: null, latency: null, error: 'Not a valid URL' };
+  // This runs against demo_url straight out of the listings table — a seller-
+  // supplied string. Without vetting, a seller could point demo_url at
+  // 169.254.169.254 and read the result back out of sandbox_instances
+  // (http_status / last_error are selectable to them via the listing's RLS
+  // policy), turning the health sweep into an SSRF oracle inside Cloudflare's
+  // network. The pre-flight check plus per-hop redirect vetting both live in
+  // safeFetch below.
+  const vetted = vetUrl(url);
+  if (vetted.error) {
+    return { ok: false, status: null, latency: null, error: vetted.error };
   }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    return { ok: false, status: null, latency: null, error: `Unsupported protocol ${parsed.protocol}` };
-  }
+  parsed = vetted.url;
 
   const started = Date.now();
   const controller = new AbortController();
@@ -113,9 +118,8 @@ async function probe(url) {
   try {
     // GET rather than HEAD: plenty of static hosts answer HEAD with 405 while the
     // page itself is perfectly fine.
-    const res = await fetch(parsed.toString(), {
+    const res = await safeFetch(parsed.toString(), {
       method: 'GET',
-      redirect: 'follow',
       signal: controller.signal,
       headers: { 'User-Agent': 'Forkable-DemoCheck/1.0 (+listing health check)' }
     });

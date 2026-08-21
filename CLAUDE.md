@@ -114,9 +114,21 @@ Nothing secret belongs in this repo, and nothing secret has ever been committed 
   `functions/_shared/http.js`, and log the missing variable name rather than showing it.
   A partly-configured deploy is safe to show strangers.
 
-**Open risk, unresolved:** `/api/import-repo` has no rate limit, and signup is free, so
-one account can loop it and burn the Anthropic key. Leaving `ANTHROPIC_API_KEY` unset
-disables that one button and nothing else. Do not enable it without adding a limit.
+**Open risk, partly addressed — still your call:** `/api/import-repo` spends money on
+every call, and signup is free, so "signed in" was never a spend limit. There is now a
+per-user *and* a global daily cap (`supabase/import_quota.sql` + a claim in the route,
+taken before any paid call and atomic so concurrent requests cannot race past it).
+
+Two things are still true and must not be glossed over:
+
+1. **The SQL has not been applied to any database, and has never been executed.** It is
+   written, not verified — exactly the state scar #2 warns about. Run it, then confirm
+   `claim_import_quota` actually denies the sixth call in a day, before trusting it.
+2. **The cap is not the same thing as a spend ceiling.** It bounds calls, not dollars.
+   Set a hard spend cap in the Anthropic console *as well*, before the key goes in.
+
+Leaving `ANTHROPIC_API_KEY` unset still disables that one button and nothing else, and
+is still the cheapest safe default.
 
 ---
 

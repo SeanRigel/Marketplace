@@ -128,7 +128,7 @@ if (!supabaseUp) console.log('  \x1b[2mSkipping schema and security checks — n
 for (const t of supabaseUp
   ? ['waitlist', 'profiles', 'listings', 'purchases', 'reviews',
      'sandbox_instances', 'platform_settings', 'listing_updates',
-     'requests', 'request_responses']
+     'requests', 'request_responses', 'import_usage']
   : []) {
   const r = await sb(`/${t}?select=*&limit=1`, { key: env.SUPABASE_SERVICE_ROLE_KEY });
   if (r.status === 404 || r.json?.code === '42P01') bad(`Table "${t}" missing`, 'Run the SQL files in supabase/ in order.');
@@ -182,6 +182,28 @@ if (repoLeak.ok && Array.isArray(repoLeak.json)) {
       'Column privileges were not applied. ' + colFix('listings', "'repo_url'"));
 } else {
   ok('repo_url is not publicly readable', `anon got ${repoLeak.status}`);
+}
+
+/* The one route that spends real money on every call. A cap that is not installed
+ * is not a cap, and this is the failure mode where you find out from a bill. */
+if (env.ANTHROPIC_API_KEY) {
+  const quota = await sb('/rpc/claim_import_quota', {
+    method: 'POST', body: { p_user: '00000000-0000-4000-8000-000000000000' },
+    key: env.SUPABASE_SERVICE_ROLE_KEY
+  });
+  if (quota.status === 404 || quota.json?.code === '42883') {
+    bad('ANTHROPIC_API_KEY is set but the import spend cap is NOT installed',
+        'One account can loop /api/import-repo and drain the key. Run:\n' +
+        '      supabase/import_quota.sql\n' +
+        '      ...or unset ANTHROPIC_API_KEY, which disables that one button and nothing else.');
+  } else {
+    ok('Import spend cap is installed', 'claim_import_quota responded');
+  }
+  meh('ANTHROPIC_API_KEY is set',
+      'The daily cap bounds CALLS, not dollars. Set a hard spend cap in the Anthropic\n' +
+      '      console as well — a cap in one place only is how a key gets drained.');
+} else {
+  ok('ANTHROPIC_API_KEY unset', 'Auto-draft is off; nothing can spend on the model.');
 }
 
 // A browser must never be able to mint itself a completed purchase.

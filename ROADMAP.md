@@ -33,8 +33,8 @@ the Cloudflare deploy.
 was never committed and no live key is tracked. The repo is **public**.
 
 ✅ **Supabase project created and schema installed 2026-08-21** — project `Forkable`
-(`wtqwuvdeurvwpypejpfp`), region `us-west-1`, free tier. All six SQL files applied in
-order. `config.js` now carries the project URL and anon key, so the app is out of local
+(`wtqwuvdeurvwpypejpfp`), region `us-west-1`, free tier. The first six SQL files were
+applied in order. `config.js` now carries the project URL and anon key, so the app is out of local
 mode and the blue banner is gone.
 
 Verified against the real database, not the localStorage mock:
@@ -106,7 +106,9 @@ All of this is built, tested, and verified in a browser.
 Follow `START-HERE.md` Phases 1–3. Roughly 70 minutes of clicking.
 
 - [ ] Stripe Connect profile submitted — *do this first, then walk away; review takes days*
-- [x] ~~Supabase project created, all 6 SQL files run in order~~ — done 2026-08-21, verified
+- [x] ~~Supabase project created, first 6 SQL files run in order~~ — done 2026-08-21, verified
+- [ ] **`supabase/import_quota.sql` — written but NOT yet applied.** Run it in the SQL
+      editor before setting `ANTHROPIC_API_KEY`. Unverified against a database
 - [x] ~~`config.js` filled in → blue "Local mode" banner disappears~~ — done 2026-08-21
 - [ ] `npx wrangler pages deploy .` → **you have a public URL**
 - [ ] Waitlist form tested from your phone, row confirmed in Supabase
@@ -218,6 +220,53 @@ pay for is the best research you'll get.
 ---
 
 ## Scars worth remembering
+
+**An SSRF allow-check that only understood dotted-quad, and a `redirect: 'follow'`
+that walked around it anyway.** Found 2026-08-21 auditing the two routes that fetch a
+seller-supplied URL.
+
+`check-demo.js` vetted the hostname with a dotted-quad regex plus a small deny list.
+Nine spellings walked straight through, confirmed by running the real function:
+
+| spelling | resolves to |
+| --- | --- |
+| `2130706433` | 127.0.0.1 (32-bit decimal) |
+| `0x7f000001` | 127.0.0.1 (hex) |
+| `0177.0.0.1` | 127.0.0.1 (octal) |
+| `127.1` | 127.0.0.1 (inet_aton fills the gap) |
+| `::ffff:169.254.169.254` | cloud metadata over IPv4-mapped IPv6 |
+| `100.64.0.1`, `192.0.0.1`, `198.18.0.1` | CGNAT / IETF / benchmark ranges |
+
+A hostname does not have to be dotted-quad to resolve. The fix parses inet_aton-style
+into a number and tests the number against CIDR ranges.
+
+Worse than the spellings: the fetch used `redirect: 'follow'`. So even a correct
+hostname check was decorative — a public URL that 302s to `http://169.254.169.254/`
+passed the pre-flight and was followed anyway. Redirects are now resolved by hand with
+every hop re-vetted (`safeFetch`).
+
+And `check-demos.js` — the *cron* sweep, which fetches `demo_url` straight off live
+listings — had **no host check at all**, only a protocol check. A seller could point
+`demo_url` at an internal address and read the result back: `http_status` and
+`last_error` land in `sandbox_instances`, which that seller can select through the
+listing's RLS policy. A blind SSRF with an oracle attached.
+
+Both routes now share `functions/_shared/net-safety.js`, guarded by 67 assertions in
+`net-safety.test.mjs` — every bypass above is a named test case.
+
+Two things worth keeping in mind:
+
+- **The mask bug inside the fix.** The first version of the CIDR check compared
+  `(value & mask)` against an unsigned base. `&` yields a *signed* 32-bit int, so every
+  range at or above `128.0.0.0` — 169.254/16, 172.16/12, 192.168/16, multicast —
+  silently never matched, while 10/8 and 127/8 matched fine. It looked like it worked.
+  Caught only because the test file asserted the ranges individually.
+- **What this still cannot do.** It checks hostnames, not the addresses they resolve
+  to. A public name can point at 127.0.0.1 (`localtest.me` does), and DNS can change
+  between the check and the connection. Workers can't resolve-and-pin, so literal
+  vetting plus per-hop redirect checks is the ceiling. Anything that must be airtight
+  needs a host allow-list.
+
 
 **A column-level `revoke select` is a silent no-op under a table-level grant.**
 Found 2026-08-21 while installing the schema into a real Supabase project for the

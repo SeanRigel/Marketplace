@@ -5,40 +5,20 @@
  * discovering from a rejection.
  *
  * This makes the server fetch a URL chosen by the caller, which is server-side request
- * forgery if left open. Signed-in callers only, http(s) only, and private/loopback
- * hosts are refused — the worker sits inside Cloudflare's network and must not be
- * usable as a probe for anything that isn't the public internet.
+ * forgery if left open. Signed-in callers only, and every address is vetted by
+ * functions/_shared/net-safety.js — including each redirect hop, which is where the
+ * first version of this leaked: it vetted the URL the caller sent, then followed
+ * `redirect: 'follow'` wherever it led.
  */
 import { json, fail, requireEnv, failSetup } from '../_shared/http.js';
 import { requireUser } from '../_shared/supabase.js';
+import { vetUrl, safeFetch, isPrivateHost } from '../_shared/net-safety.js';
 
 const TIMEOUT_MS = 10000;
 
-// Literal addresses that must never be fetched on a caller's behalf.
-const BLOCKED_HOSTNAMES = new Set([
-  'localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]',
-  'metadata.google.internal', '169.254.169.254'
-]);
-
-export function isPrivateHost(hostname) {
-  const h = hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (BLOCKED_HOSTNAMES.has(h)) return true;
-  if (h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return true;
-
-  // IPv4 private and link-local ranges.
-  const v4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (v4) {
-    const [a, b] = [Number(v4[1]), Number(v4[2])];
-    if (a === 10 || a === 127 || a === 0) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 169 && b === 254) return true;
-  }
-  // IPv6 loopback / unique-local / link-local.
-  if (h === '::' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80')) return true;
-
-  return false;
-}
+// Re-exported so existing callers and tests keep working; the implementation now
+// lives in _shared/net-safety.js and is shared with the cron sweep.
+export { isPrivateHost };
 
 export async function onRequestPost({ request, env }) {
   try {
@@ -53,28 +33,17 @@ export async function onRequestPost({ request, env }) {
   const body = await request.json().catch(() => ({}));
   if (!body.url) return fail('url is required.');
 
-  let parsed;
-  try {
-    parsed = new URL(body.url);
-  } catch {
-    return json({ ok: false, error: 'That is not a valid URL.' });
-  }
-
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    return json({ ok: false, error: 'Demo URLs must be http or https.' });
-  }
-  if (isPrivateHost(parsed.hostname)) {
-    return json({ ok: false, error: 'That address is not reachable from the public internet.' });
-  }
+  const vetted = vetUrl(body.url);
+  if (vetted.error) return json({ ok: false, error: vetted.error });
+  const parsed = vetted.url;
 
   const started = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const res = await fetch(parsed.toString(), {
+    const res = await safeFetch(parsed.toString(), {
       method: 'GET',
-      redirect: 'follow',
       signal: controller.signal,
       headers: { 'User-Agent': 'Forkable-DemoCheck/1.0 (+listing health check)' }
     });
@@ -98,7 +67,7 @@ export async function onRequestPost({ request, env }) {
       latency_ms: Date.now() - started,
       error: e.name === 'AbortError'
         ? `No response within ${TIMEOUT_MS / 1000}s.`
-        : `Could not reach it: ${e.message}`
+        : e.blocked ? e.message : `Could not reach it: ${e.message}`
     });
   } finally {
     clearTimeout(timer);

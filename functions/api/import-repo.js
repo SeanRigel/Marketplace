@@ -12,7 +12,7 @@
  * the SDK needs a bundler and this project has no build step.
  */
 import { json, fail, requireEnv, failSetup } from '../_shared/http.js';
-import { requireUser } from '../_shared/supabase.js';
+import { requireUser, sbAdmin } from '../_shared/supabase.js';
 
 const MODEL = 'claude-opus-5';
 const MAX_README_CHARS = 24000;   // ~6k tokens; plenty for a README
@@ -80,12 +80,43 @@ export async function onRequestPost({ request, env }) {
   }
 
   // Signed-in only: this endpoint spends money on every call.
-  const { error } = await requireUser(request, env);
+  const { user, error } = await requireUser(request, env);
   if (error) return fail(error, 401);
 
   const body = await request.json().catch(() => ({}));
   const repo = parseRepoUrl(body.repo_url || '');
   if (!repo) return fail('That does not look like a GitHub repository URL.', 400);
+
+  // Spend cap, claimed before any paid call and before we even talk to GitHub.
+  //
+  // "Requires a signed-in user" is not a spend limit when signup is free: one
+  // account can loop this, and several accounts can each sit politely under a
+  // per-user cap. claim_import_quota enforces a per-user and a global daily
+  // ceiling in one atomic statement, so firing many requests at once cannot
+  // race past it. See supabase/import_quota.sql.
+  try {
+    const claim = await sbAdmin(env, '/rpc/claim_import_quota', {
+      method: 'POST',
+      body: { p_user: user.id }
+    });
+    const verdict = Array.isArray(claim) ? claim[0] : claim;
+
+    if (verdict && verdict.allowed === false) {
+      if (verdict.reason === 'global') {
+        return fail(
+          'Auto-drafting has hit its daily limit across the whole site. ' +
+          'Try again tomorrow, or fill the listing in by hand.', 429);
+      }
+      return fail(
+        `You have used all ${verdict.per_user_limit} auto-drafts for today. ` +
+        'Fill this one in by hand, or try again tomorrow.', 429);
+    }
+  } catch (e) {
+    // If the cap cannot be evaluated, refuse. The alternative is to fail open on
+    // the one route that spends real money, which is how a key gets drained.
+    console.error('[import-repo] quota check failed: ' + (e && e.message ? e.message : e));
+    return fail('Could not verify your daily draft limit. Try again shortly.', 503);
+  }
 
   let source;
   try {

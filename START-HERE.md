@@ -54,6 +54,7 @@ wait for it.** Go straight to Phase 2.
       4. `supabase/reviews_and_health.sql`
       5. `supabase/changelog.sql`
       6. `supabase/licenses_and_requests.sql`
+      7. `supabase/import_quota.sql`
 
       ⚠️ Don't skip #4. It fixes a security hole that would let strangers see your
       unfinished draft listings.
