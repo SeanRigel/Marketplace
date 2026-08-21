@@ -20,8 +20,8 @@
  */
 window.FORKABLE_CONFIG = {
   brand: 'Forkable',
-  supabaseUrl: '',
-  supabaseAnonKey: '',
+  supabaseUrl: 'https://wtqwuvdeurvwpypejpfp.supabase.co',
+  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0cXd1dmRldXJ2d3B5cGVqcGZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyNjExMTcsImV4cCI6MjEwMjgzNzExN30.m62o-tu-JQks4RCr27K-VNrN8y1fZBL48bzOaYWn8V8',
   demoOrigin: '',
 };
 

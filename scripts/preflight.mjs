@@ -146,6 +146,27 @@ for (const v of supabaseUp
   else bad(`View "${v}" missing or broken`, r.json?.message || `HTTP ${r.status}`);
 }
 
+/* The fix for a leaked column, written out once.
+ *
+ * `revoke select (col) on tbl from anon` looks right and does nothing: a
+ * TABLE-level select grant implies every column, and a column-level revoke
+ * cannot subtract from it. Supabase grants anon/authenticated table-level
+ * select on new public tables, so the one-liner reports success and the column
+ * stays readable. Drop the table grant, then grant back what is public.
+ */
+const colFix = (table, secret) =>
+  `A column-level revoke will NOT fix this — it is a silent no-op while the\n` +
+  `      table-level grant exists. Run this instead:\n` +
+  `      do $$ declare cols text; begin\n` +
+  `        select string_agg(quote_ident(column_name), ', ' order by ordinal_position)\n` +
+  `          into cols from information_schema.columns\n` +
+  `        where table_schema='public' and table_name='${table}'\n` +
+  `          and column_name not in (${secret});\n` +
+  `        execute 'revoke select on public.${table} from anon, authenticated';\n` +
+  `        execute format('grant select (%s) on public.${table} to anon, authenticated', cols);\n` +
+  `      end $$;\n` +
+  `      Then confirm: select has_column_privilege('anon','public.${table}',<col>,'SELECT'); -- false`;
+
 /* ------------------------------------------------------------ security */
 head('Security (these are the ones that cost you money)');
 if (!supabaseUp) console.log('  \x1b[2mSkipped — no connection to Supabase.\x1b[0m');
@@ -158,8 +179,7 @@ if (repoLeak.ok && Array.isArray(repoLeak.json)) {
   // list, and CREATE OR REPLACE VIEW cannot reorder columns, so that script now
   // aborts partway with a confusing error. Give the one statement that fixes it.
   bad('PUBLIC CAN READ repo_url',
-      'Column privileges were not applied. Run this in the SQL editor:\n' +
-      '      revoke select (repo_url) on public.listings from anon, authenticated;');
+      'Column privileges were not applied. ' + colFix('listings', "'repo_url'"));
 } else {
   ok('repo_url is not publicly readable', `anon got ${repoLeak.status}`);
 }
@@ -194,8 +214,9 @@ if (draftsView.ok && draftsView.json?.length) {
 const connectLeak = await sb('/profiles?select=stripe_connect_id&limit=1');
 if (connectLeak.ok) {
   bad('PUBLIC CAN READ stripe_connect_id',
-      'Every seller\'s Connect account id is exposed. Run this in the SQL editor:\n' +
-      '      revoke select (stripe_connect_id) on public.profiles from anon, authenticated;');
+      'Every seller\'s Connect account id is exposed. ' +
+      colFix('profiles', "'stripe_connect_id','stripe_charges_enabled'," +
+                         "'stripe_payouts_enabled','stripe_details_submitted'"));
 } else {
   ok('stripe_connect_id is not publicly readable', `anon got ${connectLeak.status}`);
 }
@@ -203,9 +224,8 @@ if (connectLeak.ok) {
 const connectFlagLeak = await sb('/profiles?select=stripe_charges_enabled&limit=1');
 if (connectFlagLeak.ok) {
   bad('PUBLIC CAN READ Stripe onboarding flags',
-      'Run this in the SQL editor:\n' +
-      '      revoke select (stripe_charges_enabled, stripe_payouts_enabled,\n' +
-      '        stripe_details_submitted) on public.profiles from anon, authenticated;');
+      colFix('profiles', "'stripe_connect_id','stripe_charges_enabled'," +
+                         "'stripe_payouts_enabled','stripe_details_submitted'"));
 } else {
   ok('Stripe onboarding flags are not publicly readable', `anon got ${connectFlagLeak.status}`);
 }

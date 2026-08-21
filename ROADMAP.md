@@ -25,14 +25,32 @@ a Supabase project, a Stripe account, and a deploy, all of which need accounts o
 you can create. The site could be publicly live today; only *payments* wait on Stripe's
 review queue.
 
-**Right now:** the working tree is clean and the security pass from 2026-08-11 is
-committed. Next real step is Stage 1 — get it on the internet.
+**Right now:** the repo is on GitHub and Supabase is live. Remaining Stage 1 work is
+the Cloudflare deploy.
 
-⚠️ **This repo is Mac-only. It has never been pushed anywhere** — verified 2026-08-17:
-no git remote, no GitHub auth on this machine, 16 commits living in one directory. An
-earlier version of this file claimed it "lives on GitHub"; that was never true. There is
-**no off-machine copy of 5,200 lines of finished work.** See `PUSH-TO-GITHUB.md` — it is
-one command once you've authenticated, and it is also what makes cloud sessions possible.
+✅ **Pushed to GitHub 2026-08-21** — `github.com/SeanRigel/Marketplace`, 17 commits on
+`main`. The Mac is no longer the only copy. Secret audit confirmed clean: `.dev.vars`
+was never committed and no live key is tracked. The repo is **public**.
+
+✅ **Supabase project created and schema installed 2026-08-21** — project `Forkable`
+(`wtqwuvdeurvwpypejpfp`), region `us-west-1`, free tier. All six SQL files applied in
+order. `config.js` now carries the project URL and anon key, so the app is out of local
+mode and the blue banner is gone.
+
+Verified against the real database, not the localStorage mock:
+- All 9 views report `security_invoker = on`
+- RLS enabled on all 10 tables
+- `anon` is denied `profiles.stripe_connect_id`, the three `stripe_*_enabled` flags,
+  and `listings.repo_url`; still reads `display_name`, `title`, `price_cents`,
+  `extended_price_cents` and the `listings_with_seller` view
+- The signup trigger creates a profile row with `display_name` and `role` parsed from
+  user metadata (tested by inserting a real `auth.users` row, then deleted)
+
+⚠️ **Not yet exercised:** the HTTP round-trip through PostgREST. The cloud container's
+network policy blocks `*.supabase.co`, so the waitlist POST was never made over the
+wire from here. The privileges above were proven at the database level, which is what
+PostgREST enforces — but the first real signup from a phone is still the confirming
+test, and it stays on the Stage 1 checklist.
 
 ---
 
@@ -88,10 +106,13 @@ All of this is built, tested, and verified in a browser.
 Follow `START-HERE.md` Phases 1–3. Roughly 70 minutes of clicking.
 
 - [ ] Stripe Connect profile submitted — *do this first, then walk away; review takes days*
-- [ ] Supabase project created, all 6 SQL files run in order
-- [ ] `config.js` filled in → blue "Local mode" banner disappears
+- [x] ~~Supabase project created, all 6 SQL files run in order~~ — done 2026-08-21, verified
+- [x] ~~`config.js` filled in → blue "Local mode" banner disappears~~ — done 2026-08-21
 - [ ] `npx wrangler pages deploy .` → **you have a public URL**
 - [ ] Waitlist form tested from your phone, row confirmed in Supabase
+
+The two remaining boxes both need a Cloudflare account, so they are yours. Everything
+above them is done.
 
 ✅ **Stage 1 is done when** a stranger can open the URL, click into a working demo, and
 leave you their email.
@@ -197,6 +218,38 @@ pay for is the best research you'll get.
 ---
 
 ## Scars worth remembering
+
+**A column-level `revoke select` is a silent no-op under a table-level grant.**
+Found 2026-08-21 while installing the schema into a real Supabase project for the
+first time. `schema.sql` and `payments.sql` both said
+
+```sql
+revoke select (stripe_connect_id) on public.profiles from anon, authenticated;
+```
+
+which is what scar #5 concluded last time. It runs without error and **changes
+nothing**, because Supabase grants `anon`/`authenticated` table-level select on new
+tables in `public`, and in Postgres a table grant implies every column — a column
+revoke cannot subtract from it. Demonstrated directly: broken state → run the old
+one-liner → `has_column_privilege('anon',...,'stripe_connect_id','SELECT')` still
+`true`. So on a fresh install every seller's Connect id and every listing's `repo_url`
+— the thing being sold — were world-readable over `/rest/v1/`, exactly the leak scar #5
+was supposed to have closed.
+
+Worse, `preflight.mjs` *detected* the leak correctly but printed that same one-liner as
+the fix, so following its advice produced a clean-looking run and an unchanged leak.
+
+Fixed by revoking the table grant and granting back the public columns, computed from
+`information_schema` so it cannot drift. Both the SQL and preflight's remedy text now
+do this. Two things this leaves behind:
+
+- `alter table ... add column` does **not** extend a column-level grant. A new public
+  column is invisible until granted — which is why `licenses_and_requests.sql` re-runs
+  the block after adding `extended_price_cents`.
+- The lesson under the lesson: scar #5's *diagnosis* was right and its *remedy* was
+  wrong, and nothing caught that for months because the remedy was never run against a
+  real database. A fix you have not executed is a hypothesis.
+
 
 **Postgres views bypass RLS by default.** A view runs with its *owner's* privileges, so
 `listings_with_seller` was serving draft and delisted listings to anyone who asked.

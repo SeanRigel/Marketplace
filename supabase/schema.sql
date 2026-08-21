@@ -53,7 +53,29 @@ revoke update (stripe_connect_id) on public.profiles from anon, authenticated;
 -- Safe to revoke: nothing in the browser reads this column. Every server path
 -- that needs it (connect.js, checkout.js, release-payouts.js) goes through
 -- sbAdmin with service_role, which column privileges do not restrict.
-revoke select (stripe_connect_id) on public.profiles from anon, authenticated;
+--
+-- ...but `revoke select (col)` alone DOES NOT WORK, and fails silently.
+-- Postgres treats a TABLE-level select grant as implying select on every column,
+-- and a column-level revoke cannot subtract from it. Supabase grants anon and
+-- authenticated table-level select on new tables in public, so the obvious
+-- one-liner is a no-op that reports success. The only thing that actually works
+-- is to drop the table grant and grant back the columns that really are public.
+--
+-- Check it, don't assume it:
+--   select has_column_privilege('anon','public.profiles','stripe_connect_id','SELECT');
+-- must return false.
+do $$
+declare cols text;
+begin
+  select string_agg(quote_ident(column_name), ', ' order by ordinal_position)
+    into cols
+  from information_schema.columns
+  where table_schema = 'public' and table_name = 'profiles'
+    and column_name not in ('stripe_connect_id', 'stripe_charges_enabled',
+                            'stripe_payouts_enabled', 'stripe_details_submitted');
+  execute 'revoke select on public.profiles from anon, authenticated';
+  execute format('grant select (%s) on public.profiles to anon, authenticated', cols);
+end $$;
 
 -- A profile row must exist for every user; do it in a trigger so signup can't
 -- half-succeed and leave an authenticated user with no profile.
@@ -121,7 +143,19 @@ create policy "sellers delete own listings"
 -- repo_url is the thing being sold. RLS is row-level, so a policy alone would leak
 -- it to anyone who can see the row. Column privileges close that: nobody reads it
 -- over the API, and buyers go through listing_repo_url() below.
-revoke select (repo_url) on public.listings from anon, authenticated;
+-- Same trap as profiles above: a column-level revoke is a silent no-op while the
+-- table-level grant exists. Drop it, then grant back everything except repo_url.
+do $$
+declare cols text;
+begin
+  select string_agg(quote_ident(column_name), ', ' order by ordinal_position)
+    into cols
+  from information_schema.columns
+  where table_schema = 'public' and table_name = 'listings'
+    and column_name <> 'repo_url';
+  execute 'revoke select on public.listings from anon, authenticated';
+  execute format('grant select (%s) on public.listings to anon, authenticated', cols);
+end $$;
 
 create or replace function public.listing_repo_url(p_listing uuid)
 returns text language plpgsql security definer stable set search_path = public as $$

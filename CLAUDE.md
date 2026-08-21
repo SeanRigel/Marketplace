@@ -8,7 +8,7 @@ this repo — it deliberately does not repeat what the other docs say.
 | --- | --- |
 | `ROADMAP.md` | Where the project stands. Start here |
 | `HANDOFF.md` | Cold-start brief for a fresh session — paste it as the first message |
-| `PUSH-TO-GITHUB.md` | Getting the repo off this Mac (it has never been pushed) |
+| `PUSH-TO-GITHUB.md` | How the repo got to GitHub (done 2026-08-21; kept for the secret audit) |
 | `START-HERE.md` | Click-by-click for the next few hours of setup |
 | `SETUP.md` | Per-system reference (Supabase, Stripe, Cloudflare) |
 | `README.md` | How the code works and why it's built that way |
@@ -57,9 +57,34 @@ to an `href` or `src` with only `esc()` on it. Escaping decides whether a string
 *inside HTML*; it says nothing about whether it is safe *as a URL*, and it passes
 `javascript:` through untouched. `app/url-safety.test.mjs` guards this.
 
-**RLS is row-level. Hiding a column needs `revoke select (col)`.** `profiles` is
-`select using (true)`, so any column without an explicit revoke is world-readable over
-`/rest/v1/`. A curated view over the table does not protect the table.
+**RLS is row-level. Hiding a column needs a column privilege — and the obvious
+statement for that does not work.** `profiles` is `select using (true)`, so any column
+without an explicit revoke is world-readable over `/rest/v1/`. A curated view over the
+table does not protect the table.
+
+But `revoke select (col) on tbl from anon` is a **silent no-op** whenever the role
+holds a *table-level* select grant: Postgres treats a table grant as implying every
+column, and a column revoke cannot subtract from it. Supabase grants `anon` and
+`authenticated` table-level select on new tables in `public`, so that one-liner runs
+clean, reports success, and changes nothing. The only thing that works is to drop the
+table grant and grant back the public columns:
+
+```sql
+revoke select on public.profiles from anon, authenticated;
+grant  select (id, role, display_name, bio, created_at) on public.profiles
+  to anon, authenticated;
+```
+
+`supabase/schema.sql` does this with a `do $$` block that computes the column list, so
+it cannot drift as columns are added. Note that `alter table ... add column` does **not**
+extend an existing column-level grant — a newly added public column is invisible until
+it is granted, which is why `payments.sql` and `licenses_and_requests.sql` re-apply the
+block after adding columns. Never trust this by reading it; check it:
+
+```sql
+select has_column_privilege('anon','public.profiles','stripe_connect_id','SELECT'); -- false
+select has_column_privilege('anon','public.listings','title','SELECT');             -- true
+```
 
 **Every Postgres view needs `security_invoker = on`.** Without it a view runs with its
 owner's privileges and silently bypasses RLS.

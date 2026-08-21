@@ -20,8 +20,24 @@ revoke update (stripe_charges_enabled, stripe_payouts_enabled, stripe_details_su
 -- which sellers have finished onboarding and can take money, which is nobody
 -- else's business. The seller's own dashboard gets them from /api/connect, which
 -- reads with service_role, so revoking here costs the app nothing.
-revoke select (stripe_charges_enabled, stripe_payouts_enabled, stripe_details_submitted)
-  on public.profiles from anon, authenticated;
+--
+-- Re-apply the profiles column grants now that three columns have been added.
+-- ALTER TABLE ADD COLUMN does not extend an existing column-level grant, so the
+-- new flags are already unreadable — but this file is meant to be safe to re-run
+-- on its own, and a plain `revoke select (col)` would be a silent no-op if the
+-- table-level grant is somehow back. See the long note in schema.sql.
+do $$
+declare cols text;
+begin
+  select string_agg(quote_ident(column_name), ', ' order by ordinal_position)
+    into cols
+  from information_schema.columns
+  where table_schema = 'public' and table_name = 'profiles'
+    and column_name not in ('stripe_connect_id', 'stripe_charges_enabled',
+                            'stripe_payouts_enabled', 'stripe_details_submitted');
+  execute 'revoke select on public.profiles from anon, authenticated';
+  execute format('grant select (%s) on public.profiles to anon, authenticated', cols);
+end $$;
 
 -- ---------------------------------------------------------------- purchases
 alter table public.purchases

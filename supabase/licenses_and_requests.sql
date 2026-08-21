@@ -14,6 +14,22 @@ exception when duplicate_object then null; end $$;
 alter table public.listings
   add column if not exists extended_price_cents integer;
 
+-- listings carries column-level select grants (schema.sql), and ADD COLUMN does
+-- not extend them — so without this the new price is invisible to the browse
+-- grid and every listing silently loses its extended tier. Re-grant the public
+-- columns, which now includes extended_price_cents.
+do $$
+declare cols text;
+begin
+  select string_agg(quote_ident(column_name), ', ' order by ordinal_position)
+    into cols
+  from information_schema.columns
+  where table_schema = 'public' and table_name = 'listings'
+    and column_name <> 'repo_url';
+  execute 'revoke select on public.listings from anon, authenticated';
+  execute format('grant select (%s) on public.listings to anon, authenticated', cols);
+end $$;
+
 -- Extended must cost more than single, or the tier is meaningless. Null means
 -- the seller only offers the single-client license.
 alter table public.listings
