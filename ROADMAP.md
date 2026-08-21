@@ -221,6 +221,18 @@ pay for is the best research you'll get.
 
 ## Scars worth remembering
 
+**The RSS feed could be taken down by one seller's title.** Found 2026-08-21. The RSS
+branch of `/api/feed` escaped `<>&'"` but not control characters. Postgres text happily
+stores a vertical tab; XML 1.0 forbids it outright and has no escape for it, so `&#11;`
+is not a fix. One listing carrying one such byte makes the **entire feed** unparseable
+for every subscriber — a whole-feed outage caused by a single seller's title, with no
+error anywhere on our side. Now stripped before escaping; tab, newline and carriage
+return are kept because they are legal.
+
+Small, but the shape is worth remembering: escaping is per-format, and "we escaped it"
+answers a different question from "is this byte legal in this format at all".
+
+
 **An SSRF allow-check that only understood dotted-quad, and a `redirect: 'follow'`
 that walked around it anyway.** Found 2026-08-21 auditing the two routes that fetch a
 seller-supplied URL.

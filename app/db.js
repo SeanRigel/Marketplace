@@ -264,6 +264,27 @@
         return Promise.resolve(decorate(l));
       },
 
+      /* The CHECK constraints from schema.sql and licenses_and_requests.sql,
+       * enforced here too.
+       *
+       * Postgres refuses these rows outright, so without the same check local
+       * mode can reach states production cannot: a negative price, or an
+       * "unlimited clients" tier that costs less than the single-client one.
+       * The listing form already blocks both, but the form is not a boundary
+       * (a seller can call DB directly, and does — that is how the test listing
+       * for scar #3 was created). Keeping the mock exactly as strict as the
+       * database is the whole reason local mode is trustworthy. */
+      _checkListing: function (row) {
+        if (Number(row.price_cents) < 0) {
+          return 'Price cannot be negative.';                      // price_cents >= 0
+        }
+        if (row.extended_price_cents !== null && row.extended_price_cents !== undefined &&
+            Number(row.extended_price_cents) <= Number(row.price_cents)) {
+          return 'The extended licence has to cost more than the single licence.';
+        }
+        return null;                                               // listings_extended_price_check
+      },
+
       createListing: function (data) {
         var me = uid();
         if (!me) return Promise.reject(new Error('Sign in first.'));
@@ -271,18 +292,26 @@
         var row = Object.assign({
           id: uuid(), seller_id: me, created_at: nowISO(), updated_at: nowISO()
         }, data);
+        var bad = this._checkListing(row);
+        if (bad) return Promise.reject(new Error(bad));
         rows.push(row);
         write(K.listings, rows);
         return Promise.resolve(decorate(row));
       },
 
       updateListing: function (id, patch) {
-        var me = uid(), rows = read(K.listings), found = null;
+        var me = uid(), rows = read(K.listings), found = null, bad = null;
+        var self = this;
         rows.forEach(function (l) {
           if (l.id !== id || l.seller_id !== me) return;   // matches the update policy
+          // Validate the row as it WOULD be, before committing anything.
+          var candidate = Object.assign({}, l, patch);
+          bad = self._checkListing(candidate);
+          if (bad) return;
           Object.assign(l, patch, { updated_at: nowISO() });
           found = l;
         });
+        if (bad) return Promise.reject(new Error(bad));
         if (!found) return Promise.reject(new Error('Listing not found, or not yours.'));
         write(K.listings, rows);
         return Promise.resolve(decorate(found));

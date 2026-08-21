@@ -19,6 +19,7 @@ run "SSRF host filter" node functions/api/check-demo.test.mjs
 run "SSRF address parsing + redirect re-vetting" node functions/_shared/net-safety.test.mjs
 run "GitHub URL parsing" node functions/api/import-repo.test.mjs
 run "Seller URL safety (scheme + iframe origin)" node app/url-safety.test.mjs
+run "Local-mode access rules (RLS parity)" node app/local-rules.test.mjs
 
 printf '\n\033[1mSyntax\033[0m\n'
 tmp=$(mktemp -d)

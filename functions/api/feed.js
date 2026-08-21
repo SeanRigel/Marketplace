@@ -46,7 +46,15 @@ export async function onRequestGet({ request, env }) {
   };
 
   if (wantsRss) {
-    const esc = (s) => String(s ?? '').replace(/[<>&'"]/g, (c) =>
+    // Strip characters XML 1.0 forbids outright before escaping the rest.
+    // Postgres text happily stores a vertical tab or other control code; XML has
+    // no escape for them, so &#11; is not a fix -- they have to go. One listing
+    // carrying one such byte would otherwise make the entire feed unparseable for
+    // every reader: a whole-feed outage caused by one seller's title.
+    // Tab, newline and carriage return are legal and are deliberately kept.
+    const stripIllegal = (s) => String(s ?? '').replace(
+      /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '');
+    const esc = (s) => stripIllegal(s).replace(/[<>&'"]/g, (c) =>
       ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[c]));
 
     const items = rows.map((l) => `    <item>
