@@ -64,6 +64,7 @@ function check(label, actual, expected) {
   if (actual === expected) pass++;
   else { fail++; console.log(`  FAIL  ${label}\n        expected ${expected}, got ${actual}`); }
 }
+function ok(label, cond) { check(label, !!cond, true); }
 async function refuses(label, promise) {
   try { await promise; check(label, 'resolved', 'rejected'); }
   catch { pass++; }
@@ -245,6 +246,74 @@ await DB.signOut();
 {
   await refuses('anon cannot create a listing', DB.createListing({ title: 'x', price_cents: 1 }));
   await refuses('anon cannot buy', DB.startCheckout(live.id, 'single'));
+}
+
+/* ---------------------------------------------- moderation
+ * SQL: is_admin() gates the queue; admin_set_listing_status() re-checks it and
+ * can write only `status`. Local mode makes the first account the admin so the
+ * screen is reachable without hand-editing storage — Alice, here.
+ *
+ * The rule that actually matters: a non-admin must get nothing and be able to
+ * change nothing, even though the UI simply hides the link. Hiding a control is
+ * not a security boundary; this is what makes it one. */
+{
+  await DB.signIn('mallory@example.com', 'pw-mallory-123');
+  check('a normal seller is not an admin', await DB.isAdmin(), false);
+  check('a non-admin sees an empty moderation queue', (await DB.moderationQueue()).length, 0);
+  await refuses('a non-admin cannot delist anything',
+    DB.setListingStatus(live.id, 'delisted', 'because I feel like it'));
+  check('a non-admin sees no moderation log', (await DB.moderationLog()).length, 0);
+  await DB.signOut();
+
+  check('a signed-out visitor is not an admin', await DB.isAdmin(), false);
+  await refuses('a signed-out visitor cannot delist',
+    DB.setListingStatus(live.id, 'delisted', null));
+
+  // ...and the listing survived every one of those attempts.
+  const survived = await DB.getListing(live.id);
+  check('the listing is still live after all of that', survived.status, 'live');
+}
+
+{
+  await DB.signIn('alice@example.com', 'pw-alice-123');
+  check('the first account IS an admin in local mode', await DB.isAdmin(), true);
+
+  const queue = await DB.moderationQueue();
+  ok('the admin queue is not empty', queue.length > 0);
+  ok('the queue includes drafts, not just live listings',
+     queue.some((r) => r.status === 'draft'));
+  ok('the queue carries the seller name for context',
+     queue.every((r) => typeof r.seller_name === 'string'));
+
+  await DB.setListingStatus(live.id, 'delisted', 'testing the takedown');
+  const gone = await DB.getListing(live.id);
+  check('an admin can delist a listing', gone.status, 'delisted');
+
+  const log = await DB.moderationLog();
+  check('the action was written to the log', log.length, 1);
+  check('the log records the new status', log[0].new_status, 'delisted');
+  check('the log records the reason', log[0].reason, 'testing the takedown');
+
+  await DB.setListingStatus(live.id, 'live', null);
+  check('an admin can restore it', (await DB.getListing(live.id)).status, 'live');
+  check('an empty reason is stored as null, not an empty string',
+        (await DB.moderationLog())[0].reason, null);
+  await DB.signOut();
+}
+
+/* A delisted listing must fall out of public view — the whole point of delisting. */
+{
+  await DB.signIn('alice@example.com', 'pw-alice-123');
+  await DB.setListingStatus(live.id, 'delisted', 'checking visibility');
+  await DB.signOut();
+
+  const publicList = await DB.listListings();
+  check('a delisted listing disappears from the public list',
+        publicList.some((l) => l.id === live.id), false);
+
+  await DB.signIn('alice@example.com', 'pw-alice-123');
+  await DB.setListingStatus(live.id, 'live', null);
+  await DB.signOut();
 }
 
 /* ---------------------------------------------- report */

@@ -90,6 +90,29 @@ head('Demo isolation');
   }
 }
 
+/* ------------------------------------------------ launch readiness */
+head('Launch readiness');
+
+const legal = ['terms.html', 'privacy.html'].filter((f) => !existsSync(f));
+if (legal.length) {
+  bad('Missing legal pages: ' + legal.join(', '),
+      'Stripe asks for published terms and a privacy policy before enabling live\n' +
+      '      payments, and a marketplace with neither reads as untrustworthy.');
+} else {
+  ok('Terms and privacy policy published');
+}
+
+const cfgText = existsSync('config.js') ? readFileSync('config.js', 'utf8') : '';
+const analyticsMatch = cfgText.match(/analyticsToken\s*:\s*'([^']*)'/);
+if (!analyticsMatch || !analyticsMatch[1].trim()) {
+  meh('No analytics configured',
+      'You cannot measure a launch you did not instrument, and the number that\n' +
+      '      matters most here -- how many visitors click into a demo -- is invisible\n' +
+      '      without it. Set analyticsToken in config.js BEFORE traffic arrives.');
+} else {
+  ok('Analytics configured');
+}
+
 /* Anything past here needs to actually reach the services. */
 if (stillPlaceholder) {
   console.log('\n\x1b[33mPlaceholders present — skipping live checks.\x1b[0m');
@@ -204,6 +227,27 @@ if (env.ANTHROPIC_API_KEY) {
       '      console as well — a cap in one place only is how a key gets drained.');
 } else {
   ok('ANTHROPIC_API_KEY unset', 'Auto-draft is off; nothing can spend on the model.');
+}
+
+/* Email. Not having it is a real product hole rather than a config nicety: a
+ * seller who is never told they made a sale has no reason to come back. */
+if (env.RESEND_API_KEY) {
+  if (!env.MAIL_FROM) {
+    meh('RESEND_API_KEY set but MAIL_FROM is not',
+        'Mail will go out from the Resend sandbox sender, which lands in spam for\n' +
+        '      most recipients. Verify a domain in Resend and set MAIL_FROM.');
+  } else {
+    ok('Transactional email configured', env.MAIL_FROM);
+  }
+  if (!env.SUPPORT_EMAIL) {
+    meh('No SUPPORT_EMAIL',
+        'Replies to your receipts go nowhere. A buyer whose payment breaks has no\n' +
+        '      way to reach a human.');
+  }
+} else {
+  meh('RESEND_API_KEY unset — no email is sent at all',
+      'Sellers are not told when they make a sale, buyers get no receipt, and a\n' +
+      '      broken demo alerts nobody. Fine for local work; not fine at launch.');
 }
 
 // A browser must never be able to mint itself a completed purchase.

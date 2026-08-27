@@ -234,3 +234,33 @@ a.request-row:hover { box-shadow: var(--shadow-md); border-color: var(--border-s
 .palette-sheet li .pal-hint { margin-left: auto; font-size: 12px; color: var(--ink-4); }
 .pal-empty { color: var(--ink-4); font-size: 13.5px; cursor: default !important; }
 .palette-foot { display: flex; gap: 15px; padding: 9px 17px; border-top: 1px solid var(--border); background: var(--bg-soft); font-size: 11.5px; color: var(--ink-4); }
+
+/* ---------------------------------------------------------- moderation
+   Deliberately plain. These controls get used under time pressure — someone
+   has listed something bad and it needs to be gone — and the worst thing a
+   moderation tool can be is clever. */
+.mod-h { font-size: 15px; margin: 26px 0 10px; font-weight: 650; }
+.mod-h .hint { font-weight: 400; }
+.mod-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+.mod-row {
+  display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: var(--r);
+  background: var(--bg-soft); padding: 12px 14px;
+}
+.mod-main { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mod-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
+.mod-title a { color: var(--ink); text-decoration: none; }
+.mod-title a:hover { text-decoration: underline; }
+.mono-sm { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+.mod-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.mod-reason {
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--bg); color: var(--ink);
+  padding: 5px 9px; font-size: 13px; font-family: var(--sans); min-width: 200px;
+}
+.mod-reason:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn-danger {
+  background: var(--danger-bg); color: var(--danger);
+  border: 1px solid var(--danger-line);
+}
+.btn-danger:hover { background: var(--danger); color: #fff; }

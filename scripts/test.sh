@@ -15,6 +15,7 @@ run() {
 }
 
 run "Webhook signatures + Stripe form encoding" node functions/_shared/stripe.test.mjs
+run "Transactional email (never breaks the money path)" node functions/_shared/notify.test.mjs
 run "SSRF host filter" node functions/api/check-demo.test.mjs
 run "SSRF address parsing + redirect re-vetting" node functions/_shared/net-safety.test.mjs
 run "GitHub URL parsing" node functions/api/import-repo.test.mjs

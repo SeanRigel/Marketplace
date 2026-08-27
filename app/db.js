@@ -33,6 +33,7 @@
 
   function LocalBackend() {
     var K = {
+      modlog: 'forkable_modlog',
       users: 'forkable_local_users',
       listings: 'forkable_local_listings',
       purchases: 'forkable_local_purchases',
@@ -694,6 +695,64 @@
             .reduce(function (s, p) { return s + net(p); }, 0),
           refund_count: rows.filter(function (p) { return p.status === 'refunded'; }).length
         });
+      },
+
+      /* ---- moderation ----
+       * Mirrors supabase/moderation.sql. In local mode the first account created
+       * is the admin, purely so the screen is reachable without editing storage
+       * by hand. The real backend deliberately has no such rule -- see the note
+       * at the bottom of moderation.sql about why that race is worth losing. */
+      isAdmin: function () {
+        var me = uid();
+        if (!me) return Promise.resolve(false);
+        // First REAL account, not the seeded demo seller — seed() inserts
+        // 'Rigel' before anyone signs up, so "users[0]" would make a fictional
+        // user the administrator and nobody a real one.
+        var real = read(K.users).filter(function (u) { return !u.seeded; });
+        return Promise.resolve(!!real.length && real[0].id === me);
+      },
+
+      moderationQueue: function () {
+        var self = this;
+        return this.isAdmin().then(function (admin) {
+          if (!admin) return [];
+          var purchases = read(K.purchases);
+          return read(K.listings).map(function (l) {
+            var mine = purchases.filter(function (p) { return p.listing_id === l.id; });
+            var seller = profileOf(l.seller_id) || {};
+            return {
+              id: l.id, title: l.title, status: l.status, price_cents: l.price_cents,
+              demo_url: l.demo_url, created_at: l.created_at, updated_at: l.updated_at,
+              seller_name: seller.display_name || 'Unknown', seller_id: l.seller_id,
+              sales_count: mine.filter(function (p) { return p.status === 'complete'; }).length,
+              refund_count: mine.filter(function (p) { return p.status === 'refunded'; }).length
+            };
+          }).sort(function (a, b) { return (b.updated_at || '').localeCompare(a.updated_at || ''); });
+        });
+      },
+
+      setListingStatus: function (id, status, reason) {
+        var me = uid(), self = this;
+        return this.isAdmin().then(function (admin) {
+          if (!admin) return Promise.reject(new Error('Not authorised.'));
+          var rows = read(K.listings), found = null;
+          rows.forEach(function (l) { if (l.id === id) { l.status = status; found = l; } });
+          if (!found) return Promise.reject(new Error('Listing not found.'));
+          write(K.listings, rows);
+          var log = read(K.modlog) || [];
+          log.unshift({
+            id: uuid(), listing_id: id, actor_id: me, new_status: status,
+            reason: (reason || '').trim() || null, created_at: nowISO()
+          });
+          write(K.modlog, log);
+          return decorate(found);
+        });
+      },
+
+      moderationLog: function () {
+        return this.isAdmin().then(function (admin) {
+          return admin ? (read(K.modlog) || []) : [];
+        });
       }
     };
   }
@@ -1028,6 +1087,35 @@
         if (!u) return Promise.resolve(null);
         return rest('/seller_earnings?select=*&seller_id=eq.' + u.id)
           .then(function (r) { return (r && r[0]) || null; });
+      },
+
+      /* ---- moderation ----
+       * Authority lives entirely in the database: is_admin() decides, and
+       * admin_set_listing_status() is the only thing that can change another
+       * seller's listing -- and it can only write `status`. Nothing here is a
+       * security boundary; hiding the UI is a convenience, not a control. */
+      isAdmin: function () {
+        if (!this.currentUser()) return Promise.resolve(false);
+        return rest('/rpc/is_admin', { method: 'POST', body: {} })
+          .then(function (r) { return r === true; })
+          .catch(function () { return false; });
+      },
+
+      moderationQueue: function () {
+        return rest('/moderation_queue?select=*&order=updated_at.desc&limit=200')
+          .catch(function () { return []; });
+      },
+
+      setListingStatus: function (id, status, reason) {
+        return rest('/rpc/admin_set_listing_status', {
+          method: 'POST',
+          body: { p_listing: id, p_status: status, p_reason: reason || null }
+        });
+      },
+
+      moderationLog: function () {
+        return rest('/moderation_log?select=*&order=created_at.desc&limit=100')
+          .catch(function () { return []; });
       }
     };
   }

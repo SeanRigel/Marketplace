@@ -35,6 +35,7 @@ supabase/reviews_and_health.sql
 supabase/changelog.sql  listing_updates + the "maintained?" summary view
 supabase/licenses_and_requests.sql
 supabase/import_quota.sql
+supabase/moderation.sql
                         license tiers + the request board
 demos/                  three real working apps, served as Phase 1 sandbox demos
 ```

@@ -99,6 +99,58 @@ All of this is built, tested, and verified in a browser.
 
 ---
 
+## The plan through launch
+
+`docs/launch-plan.html` is the detailed version — five phases from here to 500 users,
+each with one exit condition. Open it in a browser. The stages below are the same plan
+in checklist form; if the two ever disagree, fix both.
+
+✅ **`supabase/moderation.sql` applied and proven 2026-08-22.** Tested against the live
+database with two real users, one admin and one ordinary:
+
+| Check | Result |
+| --- | --- |
+| Ordinary user reports as admin? | correctly **not** an admin |
+| Ordinary user attempts a takedown | **blocked** (`insufficient_privilege`) |
+| Ordinary user reads the `is_admin` column | **blocked** |
+| Admin recognised | yes |
+| Admin performs a takedown | succeeded, listing became `delisted` |
+| Rows in `moderation_log` | exactly **1** |
+
+That last row is the one worth noticing: the *blocked* attempt wrote nothing, because
+the authorisation exception fires before the log insert. A failed takedown leaves no
+trace claiming it happened.
+
+Test users and the test listing were deleted afterwards; the database is empty again.
+
+Note the first attempt at this test failed on a temp-table permission — the
+`authenticated` role has no INSERT on `pg_temp`. That was the harness, not the code,
+and it is the same trap as the spend-cap test: **a broken harness looks exactly like
+broken code until you check which one it is.**
+
+**Three gaps found 2026-08-22 that no earlier roadmap tracked.** All three are
+load-bearing before strangers arrive, and none is on the Stage 4 deferred list:
+
+- **No notification system exists at all** — not email, not in-app. A seller makes a
+  sale and is never told; a buyer refunds and nobody hears. A marketplace where the
+  seller finds out by refreshing a dashboard does not function. Needed before Stage 3
+  opens supply. A Pages Function calling Resend over plain `fetch` keeps the
+  no-build-step rule.
+- **No analytics** — you cannot count 500 users, and more importantly you cannot see
+  demo click-through, which is the single number the whole thesis rests on. Cloudflare
+  Web Analytics is free, one script tag, no cookie banner, no build step. Turn it on
+  *before* traffic arrives.
+- **No moderation path** — a seller sets their own listing `live`; `pending_review`
+  exists as a status but nothing consumes it. Fine while all three listings are yours.
+  Not fine the first time a stranger lists something. A saved SQL query and the ability
+  to set `status = 'delisted'` within minutes is enough to start.
+
+**The sequencing point worth internalising:** the question this project exists to answer
+gets settled at **ten** users, not five hundred. Everything after that is scaling
+something already known to work — and there is no point scaling something that isn't.
+
+---
+
 ## Stage 1 — Get it on the internet 🔜 THIS WEEK
 
 **Goal: a public URL collecting real signups. Does not need Stripe.**
@@ -107,8 +159,10 @@ Follow `START-HERE.md` Phases 1–3. Roughly 70 minutes of clicking.
 
 - [ ] Stripe Connect profile submitted — *do this first, then walk away; review takes days*
 - [x] ~~Supabase project created, first 6 SQL files run in order~~ — done 2026-08-21, verified
-- [ ] **`supabase/import_quota.sql` — written but NOT yet applied.** Run it in the SQL
-      editor before setting `ANTHROPIC_API_KEY`. Unverified against a database
+- [x] ~~**`supabase/import_quota.sql`** — applied and proven 2026-08-22.~~ Per-user cap
+      denies the 6th draft in a day; the global ceiling denies independently. Tested
+      against the live database, settings restored afterwards. A console spend cap in
+      Anthropic is still a separate, necessary thing — this bounds calls, not dollars
 - [x] ~~`config.js` filled in → blue "Local mode" banner disappears~~ — done 2026-08-21
 - [ ] `npx wrangler pages deploy .` → **you have a public URL**
 - [ ] Waitlist form tested from your phone, row confirmed in Supabase

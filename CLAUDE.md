@@ -7,6 +7,8 @@ this repo — it deliberately does not repeat what the other docs say.
 | File | What it's for |
 | --- | --- |
 | `ROADMAP.md` | Where the project stands. Start here |
+| `ONBOARDING.md` | For someone joining the project — access, rules, how work flows |
+| `AGENTS.md` | The same rules for a non-Claude agent. **Keep the two in sync** |
 | `HANDOFF.md` | Cold-start brief for a fresh session — paste it as the first message |
 | `PUSH-TO-GITHUB.md` | How the repo got to GitHub (done 2026-08-21; kept for the secret audit) |
 | `START-HERE.md` | Click-by-click for the next few hours of setup |
@@ -121,9 +123,19 @@ taken before any paid call and atomic so concurrent requests cannot race past it
 
 Two things are still true and must not be glossed over:
 
-1. **The SQL has not been applied to any database, and has never been executed.** It is
-   written, not verified — exactly the state scar #2 warns about. Run it, then confirm
-   `claim_import_quota` actually denies the sixth call in a day, before trusting it.
+1. ~~The SQL has not been applied to any database.~~ **Applied and proven 2026-08-22.**
+   Against the live database, with the per-user cap at its default of 5: attempts 1-5
+   allowed with the counter climbing, attempts 6 and 7 denied with `reason = per_user`,
+   and the counter correctly stopping at 5 rather than running away. The global ceiling
+   was proven separately by lowering it below current usage — it denied with
+   `reason = global`. Settings restored, test user deleted.
+
+   Worth keeping: the *first* test of this reported all seven attempts allowed and
+   looked like a broken cap. The test was wrong, not the function — seven `lateral`
+   calls inside one SQL statement all read the same snapshot, which is nothing like
+   seven HTTP requests. A plpgsql loop, where each iteration is its own command, showed
+   the true behaviour. **A test that does not reproduce the real call pattern can
+   condemn working code as easily as it can bless broken code.**
 2. **The cap is not the same thing as a spend ceiling.** It bounds calls, not dollars.
    Set a hard spend cap in the Anthropic console *as well*, before the key goes in.
 

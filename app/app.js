@@ -172,6 +172,19 @@
       (u ? '<a href="#/dashboard/seller" class="' + (onSelling ? 'on' : '') + '">Selling</a>' +
            '<a href="#/dashboard/buyer" class="' + (onBuying ? 'on' : '') + '">Purchases</a>' : '');
 
+    /* The admin link appears only for admins, but that is cosmetic. Every rule
+     * that matters is enforced by the database: is_admin() gates the queue and
+     * admin_set_listing_status() re-checks it server-side. Someone typing
+     * #/admin by hand reaches a screen that shows them nothing. */
+    if (u && DB.isAdmin) {
+      DB.isAdmin().then(function (admin) {
+        if (!admin) return;
+        var onAdmin = location.hash.indexOf('#/admin') === 0;
+        links.insertAdjacentHTML('beforeend',
+          '<a href="#/admin" class="' + (onAdmin ? 'on' : '') + '">Moderate</a>');
+      }).catch(function () {});
+    }
+
     if (u) {
       right.innerHTML =
         '<a class="who" href="#/dashboard/profile" title="' + esc(u.email) + '">' +
@@ -1635,6 +1648,121 @@
     }).catch(function (e) { view.innerHTML = fail(e); });
   }
 
+
+  /* ------------------------------------------------------------- moderation
+   *
+   * The screen that did not exist. Before this, taking down a listing meant
+   * editing the database by hand, which is not a thing you can do at 2am from a
+   * phone when someone lists malware.
+   *
+   * Deliberately plain: a table, a reason box, two buttons. Moderation tools get
+   * used under time pressure and the worst thing they can be is clever.
+   */
+  function viewAdmin() {
+    if (!DB.currentUser()) {
+      view.innerHTML = '<div class="empty"><h2>Sign in first</h2>' +
+        '<a class="btn btn-primary" href="#/auth">Sign in</a></div>';
+      return;
+    }
+
+    view.innerHTML = '<div class="loading">Checking…</div>';
+
+    DB.isAdmin().then(function (admin) {
+      if (!admin) {
+        // Same message a non-existent page would give. No hint that the screen exists.
+        view.innerHTML = '<div class="empty"><h2>Not found</h2>' +
+          '<p>That page isn\'t here.</p>' +
+          '<a class="btn btn-secondary" href="#/browse">Back to browse</a></div>';
+        return;
+      }
+      return DB.moderationQueue().then(render);
+    }).catch(function (e) {
+      view.innerHTML = '<div class="empty"><h2>Could not load</h2><p>' + esc(e.message) + '</p></div>';
+    });
+
+    function render(rows) {
+      rows = rows || [];
+      var pending = rows.filter(function (r) { return r.status === 'pending_review'; });
+      var live    = rows.filter(function (r) { return r.status === 'live'; });
+      var other   = rows.filter(function (r) {
+        return r.status !== 'pending_review' && r.status !== 'live';
+      });
+
+      view.innerHTML =
+        '<div class="head-row"><h1>Moderate</h1>' +
+          '<span class="hint">' + rows.length + ' listing' + (rows.length === 1 ? '' : 's') + '</span>' +
+        '</div>' +
+        section('Awaiting review', pending, 'Nothing waiting.') +
+        section('Live', live, 'No live listings yet.') +
+        section('Draft, delisted and archived', other, 'Nothing here.');
+
+      wire();
+    }
+
+    function section(title, rows, emptyText) {
+      if (!rows.length) {
+        return '<h2 class="mod-h">' + esc(title) + '</h2>' +
+               '<p class="hint" style="margin:0 0 20px">' + esc(emptyText) + '</p>';
+      }
+      return '<h2 class="mod-h">' + esc(title) + ' <span class="hint">(' + rows.length + ')</span></h2>' +
+        '<div class="mod-list">' + rows.map(row).join('') + '</div>';
+    }
+
+    function row(r) {
+      var demoWarn = r.demo_failures > 0
+        ? '<span class="badge badge-danger">demo failing ×' + r.demo_failures + '</span>' : '';
+      var refundWarn = r.refund_count > 0 && r.refund_count >= r.sales_count && r.sales_count > 0
+        ? '<span class="badge badge-danger">all sales refunded</span>' : '';
+
+      return '<div class="mod-row" data-id="' + esc(r.id) + '">' +
+        '<div class="mod-main">' +
+          '<div class="mod-title">' +
+            '<a href="#/listing/' + esc(r.id) + '">' + esc(r.title) + '</a> ' +
+            statusBadge(r.status) + demoWarn + refundWarn +
+          '</div>' +
+          '<div class="hint">' +
+            'by <a href="#/seller/' + esc(r.seller_id) + '">' + esc(r.seller_name) + '</a>' +
+            ' · ' + money(r.price_cents) +
+            ' · ' + (r.sales_count || 0) + ' sold' +
+            (r.refund_count ? ' · ' + r.refund_count + ' refunded' : '') +
+          '</div>' +
+          (r.demo_url ? '<div class="hint mono-sm">' + esc(r.demo_url) + '</div>' : '') +
+        '</div>' +
+        '<div class="mod-actions">' +
+          '<input type="text" class="mod-reason" placeholder="Reason (kept on record)" ' +
+            'aria-label="Reason for this change">' +
+          (r.status === 'delisted'
+            ? '<button class="btn btn-secondary btn-sm act" data-to="live">Restore</button>'
+            : '<button class="btn btn-danger btn-sm act" data-to="delisted">Delist</button>') +
+          (r.status === 'pending_review'
+            ? '<button class="btn btn-primary btn-sm act" data-to="live">Approve</button>' : '') +
+        '</div>' +
+      '</div>';
+    }
+
+    function wire() {
+      Array.prototype.forEach.call(view.querySelectorAll('.act'), function (btn) {
+        btn.onclick = function () {
+          var rowEl = btn.closest('.mod-row');
+          var id = rowEl.getAttribute('data-id');
+          var to = btn.getAttribute('data-to');
+          var reason = (rowEl.querySelector('.mod-reason') || {}).value || '';
+
+          if (to === 'delisted' && !confirm('Delist this listing? The seller keeps their data; it stops being public.')) return;
+
+          btn.disabled = true;
+          btn.textContent = '…';
+          DB.setListingStatus(id, to, reason)
+            .then(function () { return DB.moderationQueue().then(render); })
+            .catch(function (e) {
+              btn.disabled = false;
+              alert(e.message || 'That did not work.');
+            });
+        };
+      });
+    }
+  }
+
   /* ------------------------------------------------------------- router */
   function render() {
     var raw = (location.hash || '#/browse').replace(/^#\/?/, '');
@@ -1656,6 +1784,7 @@
       case 'requests':  return parts[1] === 'new' ? viewRequestForm() : viewRequests(query);
       case 'request':   return viewRequest(parts[1]);
       case 'auth':      return viewAuth();
+      case 'admin':     return viewAdmin();
       case 'dashboard':
         if (parts[1] === 'buyer')   return viewBuyer();
         if (parts[1] === 'profile') return viewProfile();

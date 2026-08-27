@@ -305,8 +305,8 @@
             </tr>
             <tr>
               <td><code>import_quota.sql</code> spend cap</td>
-              <td>Never executed — connector dropped</td>
-              <td><span class="chip chip-pending">Not verified</span></td>
+              <td>Both ceilings tested against the live database</td>
+              <td><span class="chip chip-verified">Verified</span></td>
             </tr>
             <tr>
               <td>Waitlist over real HTTP</td>
@@ -473,13 +473,20 @@
 
   <section>
     <div class="callout">
-      <h3>The one thing I could not prove</h3>
+      <h3>Since resolved — and a lesson in the tail</h3>
       <p>
-        <code>supabase/import_quota.sql</code> has never been executed against a database.
-        The Supabase connector dropped mid-session and didn't come back. It is written,
-        not verified — the exact state scar #2 exists to warn about, so I'm not calling it
-        done. Run it, then confirm it actually denies the sixth draft in a day before
-        trusting it.
+        The spend cap was the one unproven thing here. It is now installed and tested
+        against the live database: attempts 1&ndash;5 allowed with the counter climbing,
+        6 and 7 denied with <code>reason = per_user</code>. The global ceiling was proven
+        separately and denies independently.
+      </p>
+      <p>
+        The first attempt to test it reported all seven attempts allowed and looked
+        exactly like a broken cap. The test was wrong, not the code &mdash; seven
+        <code>lateral</code> calls inside one SQL statement all read the same snapshot,
+        which is nothing like seven HTTP requests. Worth remembering: a test that doesn't
+        reproduce the real call pattern can condemn working code as readily as it can
+        bless broken code.
       </p>
       <p>
         Separately: that cap bounds <em>calls</em>, not <em>dollars</em>. A console spend

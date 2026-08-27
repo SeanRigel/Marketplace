@@ -1,0 +1,376 @@
+<title>Deploy Walkthrough</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400&display=swap">
+
+<style>
+  :root {
+    --paper:#F7F6F4; --surface:#FFFFFF; --surface-2:#EFEDE9;
+    --ink:#1A1815; --ink-soft:#43403A; --muted:#6B665D;
+    --rule:#DFDBD3; --rule-soft:#EBE8E2;
+    --accent:#7A3E12; --accent-ink:#FFFFFF;
+    --done:#2F6B4F; --done-bg:#E5F0E9;
+    --warn:#8A5A1B; --warn-bg:#F7EEDF;
+    --term-bg:#1F1D1A; --term-ink:#EDE9E1;
+    --shadow:0 1px 2px rgba(26,24,21,.05), 0 8px 24px -12px rgba(26,24,21,.2);
+    --sans:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,sans-serif;
+    --serif:"IBM Plex Serif",ui-serif,Georgia,serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:#141210; --surface:#1C1A17; --surface-2:#232019;
+      --ink:#EFEBE3; --ink-soft:#CBC5B9; --muted:#948D80;
+      --rule:#332F28; --rule-soft:#28241E;
+      --accent:#D89A62; --accent-ink:#141210;
+      --done:#74C39A; --done-bg:#16261C;
+      --warn:#DCA954; --warn-bg:#282013;
+      --term-bg:#0E0D0B; --term-ink:#EFEBE3;
+      --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 24px -12px rgba(0,0,0,.8);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:#141210; --surface:#1C1A17; --surface-2:#232019;
+    --ink:#EFEBE3; --ink-soft:#CBC5B9; --muted:#948D80;
+    --rule:#332F28; --rule-soft:#28241E;
+    --accent:#D89A62; --accent-ink:#141210;
+    --done:#74C39A; --done-bg:#16261C;
+    --warn:#DCA954; --warn-bg:#282013;
+    --term-bg:#0E0D0B; --term-ink:#EFEBE3;
+    --shadow:0 1px 2px rgba(0,0,0,.5), 0 8px 24px -12px rgba(0,0,0,.8);
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;
+       line-height:1.6;margin:0;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:44rem;margin:0 auto;padding:3rem 1.25rem 6rem;
+        display:flex;flex-direction:column;gap:2.5rem}
+  h1,h2,h3{text-wrap:balance;margin:0;letter-spacing:-.015em}
+  h1{font-size:2rem;font-weight:700;line-height:1.15}
+  h2{font-size:1.25rem;font-weight:600}
+  h3{font-size:1rem;font-weight:600}
+  p{margin:0}
+  a{color:var(--accent)}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  .eyebrow{font-family:var(--mono);font-size:.71rem;font-weight:500;letter-spacing:.14em;
+           text-transform:uppercase;color:var(--muted)}
+  .lede{font-family:var(--serif);font-size:1.1rem;line-height:1.65;color:var(--ink-soft)}
+  .note{font-size:.88rem;color:var(--muted)}
+
+  header{display:flex;flex-direction:column;gap:.9rem}
+  section{display:flex;flex-direction:column;gap:1rem}
+  .section-head{display:flex;flex-direction:column;gap:.25rem}
+
+  /* terminal blocks — visually distinct from prose so it's obvious what to type */
+  .term{background:var(--term-bg);border-radius:7px;overflow:hidden;box-shadow:var(--shadow)}
+  .term-bar{display:flex;align-items:center;gap:6px;padding:8px 12px;
+            border-bottom:1px solid rgba(255,255,255,.08)}
+  .term-bar i{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.18);display:block}
+  .term-bar span{font-family:var(--mono);font-size:.68rem;color:rgba(255,255,255,.4);margin-left:6px}
+  .term pre{margin:0;padding:14px 16px;overflow-x:auto;font-family:var(--mono);
+            font-size:.83rem;line-height:1.7;color:var(--term-ink)}
+  .term .prompt{color:#8FB98F;user-select:none}
+  .term .cmt{color:#8A857A}
+
+  .expect{background:var(--done-bg);border-left:3px solid var(--done);border-radius:5px;
+          padding:.65rem .85rem;font-size:.88rem;color:var(--ink-soft)}
+  .expect b{color:var(--done)}
+  .warn{background:var(--warn-bg);border-left:3px solid var(--warn);border-radius:5px;
+        padding:.75rem .9rem;font-size:.89rem;color:var(--ink-soft)}
+  .warn b{color:var(--warn)}
+
+  .step{background:var(--surface);border:1px solid var(--rule);border-radius:8px;
+        box-shadow:var(--shadow);overflow:hidden}
+  .step-head{display:flex;gap:.8rem;align-items:flex-start;padding:1rem 1.15rem;
+             background:var(--surface-2);border-bottom:1px solid var(--rule-soft)}
+  .snum{font-family:var(--mono);font-size:.78rem;font-weight:600;color:var(--accent-ink);
+        background:var(--accent);width:1.65rem;height:1.65rem;border-radius:50%;
+        display:grid;place-items:center;flex:none}
+  .step-head .t{display:flex;flex-direction:column;gap:.15rem;min-width:0}
+  .step-head .when{font-family:var(--mono);font-size:.71rem;color:var(--muted)}
+  .step-body{padding:1.1rem 1.15rem;display:flex;flex-direction:column;gap:.9rem}
+  .step-body p{font-size:.94rem;color:var(--ink-soft)}
+  .step-body ol,.step-body ul{margin:0;padding-left:1.2rem;display:flex;
+                              flex-direction:column;gap:.4rem}
+  .step-body li{font-size:.94rem;color:var(--ink-soft)}
+  .step-body li b{color:var(--ink)}
+
+  code{font-family:var(--mono);font-size:.85em;background:var(--surface-2);
+       padding:.12em .36em;border-radius:3px}
+  .kbd{font-family:var(--mono);font-size:.8em;border:1px solid var(--rule);
+       border-bottom-width:2px;border-radius:4px;padding:.1em .4em;background:var(--surface)}
+  hr{border:none;border-top:1px solid var(--rule);margin:0}
+</style>
+
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Forkable · do this now · 22 Aug 2026</div>
+    <h1>Everything waiting on you</h1>
+    <p class="lede">
+      Six commits of finished code that have never left my container, a site that has
+      never been deployed, and five settings. Roughly an hour, and most of it is
+      clicking rather than typing.
+    </p>
+  </header>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">First, the thing that stops this recurring</div>
+      <h2>Why any of this is in a terminal — and how to mostly stop</h2>
+    </div>
+    <p style="font-size:.94rem;color:var(--ink-soft)">
+      Two separate jobs have been tangled together. <b>Pushing</b> means sending code to
+      GitHub. <b>Deploying</b> means putting the site on the internet. Neither has to be
+      typed, and after step 4 below, deploying happens by itself every time you push.
+    </p>
+    <ul style="font-size:.94rem;color:var(--ink-soft);padding-left:1.2rem;display:flex;flex-direction:column;gap:.4rem">
+      <li><b>GitHub Desktop</b> (desktop.github.com) turns pushing into two button clicks.
+        Worth installing once you're through this list.</li>
+      <li><b>Cloudflare's Git integration</b> makes deploying automatic. Set up once in
+        step 4; after that you never deploy manually again.</li>
+      <li>The only genuinely terminal-only piece is applying my patch — and that exists
+        only because Claude has read-only access to your repo. Grant write access and
+        even that disappears.</li>
+    </ul>
+  </section>
+
+  <hr>
+
+  <!-- STEP 1 -->
+  <article class="step">
+    <div class="step-head">
+      <div class="snum">1</div>
+      <div class="t"><h3>Install Node</h3><div class="when">5 min · no terminal</div></div>
+    </div>
+    <div class="step-body">
+      <p>
+        Needed to run the test suite and, this once, to deploy. It's a normal Mac
+        installer — nothing to configure.
+      </p>
+      <ol>
+        <li>Go to <b>nodejs.org</b></li>
+        <li>Download the <b>macOS Installer (.pkg)</b>, LTS version</li>
+        <li>Double-click it. Next, next, done.</li>
+      </ol>
+      <div class="term">
+        <div class="term-bar"><i></i><i></i><i></i><span>Terminal — check it worked</span></div>
+        <pre><span class="prompt">$</span> node --version</pre>
+      </div>
+      <div class="expect"><b>Expect:</b> a version number like <code>v22.x.x</code>. If it says
+      "command not found", close Terminal completely and reopen it.</div>
+    </div>
+  </article>
+
+  <!-- STEP 2 -->
+  <article class="step">
+    <div class="step-head">
+      <div class="snum">2</div>
+      <div class="t"><h3>Apply my six commits and push</h3><div class="when">5 min · terminal</div></div>
+    </div>
+    <div class="step-body">
+      <p>
+        Download <code>forkable-launch-build.patch</code> from our chat first — it goes to
+        your Downloads folder. Then open Terminal
+        (<span class="kbd">⌘</span> <span class="kbd">Space</span>, type "Terminal", Enter)
+        and run these <b>one line at a time</b>, waiting for each to finish.
+      </p>
+      <div class="term">
+        <div class="term-bar"><i></i><i></i><i></i><span>Terminal</span></div>
+<pre><span class="prompt">$</span> cd ~/Marketplace
+<span class="prompt">$</span> git pull origin main
+<span class="prompt">$</span> git am ~/Downloads/forkablelaunchbuild.patch
+<span class="prompt">$</span> ./scripts/test.sh
+<span class="prompt">$</span> git push origin main</pre>
+      </div>
+      <div class="expect"><b>Expect:</b> the test step ends with <b>All checks passed</b>,
+      and the push ends with something like <code>main -&gt; main</code>.</div>
+      <div class="warn">
+        <b>The filename may differ.</b> Your browser strips hyphens — last time
+        <code>forkable-security-fixes.patch</code> arrived as
+        <code>forkablesecurityfixes.patch</code>. Check with <code>ls ~/Downloads</code>,
+        or type <code>git am </code> and then <b>drag the file from Finder into the
+        Terminal window</b> — it fills in the exact path for you.
+      </div>
+      <div class="warn">
+        <b>If it asks for a password</b>, that's the <code>ghp_</code> token again, not your
+        GitHub password. If you've lost it, make a new one at
+        <b>github.com/settings/tokens/new</b> with the <code>repo</code> box ticked.
+      </div>
+    </div>
+  </article>
+
+  <!-- STEP 3 -->
+  <article class="step">
+    <div class="step-head">
+      <div class="snum">3</div>
+      <div class="t"><h3>Make yourself an admin</h3><div class="when">2 min · browser only</div></div>
+    </div>
+    <div class="step-body">
+      <p>
+        The moderation system is already installed in your database. Nobody is an
+        administrator yet, deliberately — there's no "first user wins" rule, because that's
+        a race you could lose to a stranger who signs up before you do.
+      </p>
+      <ol>
+        <li>Open <b>supabase.com/dashboard</b> → the <b>Forkable</b> project</li>
+        <li>Left sidebar → <b>SQL Editor</b> → <b>New query</b></li>
+        <li>Paste this, with your own email, and click <b>Run</b>:</li>
+      </ol>
+      <div class="term">
+        <div class="term-bar"><i></i><i></i><i></i><span>Supabase SQL Editor</span></div>
+<pre>update public.profiles set is_admin = true
+where id = (select id from auth.users
+            where email = '<span class="cmt">you@example.com</span>');</pre>
+      </div>
+      <div class="warn">
+        <b>You need an account on the site first.</b> If you've never signed up on your own
+        app, this updates nothing. Deploy first (step 4), sign up, then come back.
+      </div>
+    </div>
+  </article>
+
+  <!-- STEP 4 -->
+  <article class="step">
+    <div class="step-head">
+      <div class="snum">4</div>
+      <div class="t"><h3>Deploy — and make it automatic forever</h3><div class="when">15 min · mostly browser</div></div>
+    </div>
+    <div class="step-body">
+      <p>
+        Do it this way rather than with <code>wrangler</code>. It takes five minutes longer
+        once, and then every future push deploys itself with no terminal at all.
+      </p>
+      <ol>
+        <li>Go to <b>dash.cloudflare.com</b> and sign up if you haven't</li>
+        <li>Left sidebar → <b>Workers &amp; Pages</b> → <b>Create</b> → <b>Pages</b> tab →
+          <b>Connect to Git</b></li>
+        <li>Authorise GitHub, then pick <b>SeanRigel/Marketplace</b></li>
+        <li>On the build settings screen:
+          <ul style="margin-top:.4rem">
+            <li>Framework preset: <b>None</b></li>
+            <li>Build command: <b>leave completely empty</b></li>
+            <li>Build output directory: <code>/</code></li>
+          </ul>
+        </li>
+        <li>Click <b>Save and Deploy</b></li>
+      </ol>
+      <div class="warn">
+        <b>Leave the build command empty.</b> This project has no build step by design —
+        that's a deliberate architectural rule, not an oversight. Anything in that box will
+        fail the deploy.
+      </div>
+      <div class="expect"><b>Expect:</b> a live URL like
+      <code>marketplace-abc.pages.dev</code>. <b>Open it on your phone.</b> Sign up on the
+      waitlist. Then check the <code>waitlist</code> table in Supabase — the row should be
+      there. That's the one test I've never been able to run.</div>
+    </div>
+  </article>
+
+  <!-- STEP 5 -->
+  <article class="step">
+    <div class="step-head">
+      <div class="snum">5</div>
+      <div class="t"><h3>Buy a domain and a real support inbox</h3><div class="when">15 min · browser</div></div>
+    </div>
+    <div class="step-body">
+      <p>
+        Your Terms of Service and Privacy Policy both promise
+        <code>support@forkable.dev</code>. <b>That inbox doesn't exist.</b> Published terms
+        pointing at a dead mailbox are worse than no terms at all — so this one isn't
+        cosmetic.
+      </p>
+      <ol>
+        <li>Buy the domain. Cloudflare Registrar sells at cost and it's already where your
+          site lives</li>
+        <li>In Cloudflare Pages → your project → <b>Custom domains</b> → add it</li>
+        <li>Set up email forwarding so <code>support@</code> reaches your real inbox —
+          Cloudflare Email Routing does this free</li>
+      </ol>
+      <p class="note">
+        If you'd rather use a different address, tell me and I'll change it everywhere
+        in the code instead.
+      </p>
+    </div>
+  </article>
+
+  <!-- STEP 6 -->
+  <article class="step">
+    <div class="step-head">
+      <div class="snum">6</div>
+      <div class="t"><h3>Turn on analytics before traffic arrives</h3><div class="when">5 min · browser + one edit</div></div>
+    </div>
+    <div class="step-body">
+      <p>
+        Analytics can't be applied retroactively. Every visitor before you switch this on
+        is invisible forever — including whether they clicked into a demo, which is the one
+        number this whole product rests on.
+      </p>
+      <ol>
+        <li>Cloudflare dashboard → <b>Analytics &amp; Logs</b> → <b>Web Analytics</b> →
+          <b>Add a site</b></li>
+        <li>Copy the <b>token</b> it gives you</li>
+        <li>Open <code>config.js</code> in your repo, find <code>analyticsToken: ''</code>,
+          and paste the token between the quotes</li>
+        <li>Commit and push — with step 4 done, that deploys itself</li>
+      </ol>
+      <p class="note">
+        Cloudflare's version sets no cookies and needs no consent banner, which is why the
+        privacy policy can say plainly that we run no advertising trackers.
+      </p>
+    </div>
+  </article>
+
+  <!-- STEP 7 -->
+  <article class="step">
+    <div class="step-head">
+      <div class="snum">7</div>
+      <div class="t"><h3>Switch email on</h3><div class="when">10 min · browser</div></div>
+    </div>
+    <div class="step-body">
+      <p>
+        Receipts, sale alerts, refund confirmations and demo-down warnings are all built
+        and tested — but they send nothing until there's a key. Right now a seller makes a
+        sale and is never told.
+      </p>
+      <ol>
+        <li>Sign up at <b>resend.com</b> (free tier: 3,000 emails a month)</li>
+        <li>Verify the domain you bought in step 5</li>
+        <li>Create an API key — it starts <code>re_</code></li>
+        <li>In Cloudflare Pages → your project → <b>Settings</b> → <b>Environment
+          variables</b>, add three:
+          <ul style="margin-top:.4rem">
+            <li><code>RESEND_API_KEY</code></li>
+            <li><code>MAIL_FROM</code> — e.g. <code>Forkable &lt;hello@yourdomain.com&gt;</code></li>
+            <li><code>SUPPORT_EMAIL</code> — where replies land</li>
+          </ul>
+        </li>
+        <li><b>Redeploy.</b> Environment variables don't apply to a deploy that already happened</li>
+      </ol>
+    </div>
+  </article>
+
+  <hr>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Not on this list</div>
+      <h2>What's still blocked, and by what</h2>
+    </div>
+    <ul style="font-size:.94rem;color:var(--ink-soft);padding-left:1.2rem;display:flex;flex-direction:column;gap:.5rem">
+      <li><b>Stripe.</b> You were mid-signup. Everything about payments waits on that
+        review, and nothing on this page does.</li>
+      <li><b>The two cron jobs.</b> Only matter once payments are live — but then they
+        matter enormously. Without the payout job, <b>sellers are silently never paid and
+        nothing errors.</b></li>
+      <li><b><code>demoOrigin</code>.</b> Must be set before any stranger's demo is embedded.
+        Needs a second Pages project. Not urgent while every listing is yours; mandatory
+        before it isn't.</li>
+    </ul>
+  </section>
+
+  <p class="note">
+    Steps 1, 2 and 4 get you a live site. Everything after that makes it a real one.
+  </p>
+
+</div>

@@ -15,6 +15,7 @@
 import { json, fail, requireEnv, failSetup } from '../_shared/http.js';
 import { sbAdmin } from '../_shared/supabase.js';
 import { vetUrl, safeFetch } from '../_shared/net-safety.js';
+import { sendEmail, userEmail, demoBroken } from '../_shared/notify.js';
 
 const TIMEOUT_MS = 10000;
 const FAILURES_BEFORE_ERROR = 2;   // one blip shouldn't mark a demo broken
@@ -38,7 +39,7 @@ export async function onRequestPost({ request, env }) {
 
   let listings, existing;
   try {
-    listings = await sbAdmin(env, '/listings?select=id,demo_url&status=eq.live&demo_url=not.is.null&limit=200');
+    listings = await sbAdmin(env, '/listings?select=id,title,seller_id,demo_url&status=eq.live&demo_url=not.is.null&limit=200');
     existing = await sbAdmin(env, '/sandbox_instances?select=listing_id,consecutive_failures');
   } catch (e) {
     return fail(e.message || 'Could not load listings.', 500);
@@ -77,6 +78,25 @@ export async function onRequestPost({ request, env }) {
       // One unwritable row shouldn't abandon the rest of the sweep.
       results.push({ listing_id: listing.id, url: listing.demo_url, ok: check.ok, write_error: e.message });
       continue;
+    }
+
+    // Tell the seller exactly once — on the run that crosses the threshold, not
+    // on every run after it. Without this equality check a demo that stays down
+    // mails its owner every hour until they stop reading anything we send.
+    if (!check.ok && failures === FAILURES_BEFORE_ERROR) {
+      try {
+        const addr = await userEmail(env, listing.seller_id);
+        if (addr) {
+          await sendEmail(env, Object.assign({ to: addr }, demoBroken({
+            listingTitle: listing.title,
+            demoUrl: listing.demo_url,
+            failures,
+            siteUrl: (env.SITE_URL || '').replace(/\/$/, '')
+          })));
+        }
+      } catch (e) {
+        console.error('[check-demos] alert failed: ' + (e && e.message ? e.message : e));
+      }
     }
 
     results.push({

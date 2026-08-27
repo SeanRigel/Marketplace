@@ -1,0 +1,516 @@
+<title>Forkable Launch Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;1,400&display=swap">
+
+<style>
+  :root {
+    --paper:      #F5F7F6;
+    --surface:    #FFFFFF;
+    --surface-2:  #EAEFEC;
+    --ink:        #141A18;
+    --ink-soft:   #3B4744;
+    --muted:      #5B6B66;
+    --rule:       #D6E0DB;
+    --rule-soft:  #E6EDE9;
+
+    --accent:     #1B5E52;
+    --accent-ink: #FFFFFF;
+
+    --gate:       #9A4318;
+    --gate-bg:    #F8ECE4;
+    --done:       #2F6B4F;
+    --done-bg:    #E4F0E9;
+    --wait:       #7A5B12;
+    --wait-bg:    #F6EFDC;
+
+    --shadow: 0 1px 2px rgba(20,26,24,.05), 0 8px 24px -12px rgba(20,26,24,.18);
+
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+    --serif: "IBM Plex Serif", ui-serif, Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #0D1211; --surface: #151C1A; --surface-2: #1B2422;
+      --ink: #E5EDEA; --ink-soft: #C0CCC8; --muted: #8A9C97;
+      --rule: #29352F; --rule-soft: #202B27;
+      --accent: #5FB3A1; --accent-ink: #0D1211;
+      --gate: #E0996E; --gate-bg: #2C1D14;
+      --done: #74C39A; --done-bg: #14261B;
+      --wait: #D6B45C; --wait-bg: #262013;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #0D1211; --surface: #151C1A; --surface-2: #1B2422;
+    --ink: #E5EDEA; --ink-soft: #C0CCC8; --muted: #8A9C97;
+    --rule: #29352F; --rule-soft: #202B27;
+    --accent: #5FB3A1; --accent-ink: #0D1211;
+    --gate: #E0996E; --gate-bg: #2C1D14;
+    --done: #74C39A; --done-bg: #14261B;
+    --wait: #D6B45C; --wait-bg: #262013;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.6; margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 47rem; margin: 0 auto; padding: 3.5rem 1.5rem 6rem;
+    display: flex; flex-direction: column; gap: 3rem;
+  }
+  h1,h2,h3,h4 { text-wrap: balance; margin: 0; letter-spacing: -.015em; }
+  h1 { font-size: 2.1rem; font-weight: 700; line-height: 1.15; }
+  h2 { font-size: 1.28rem; font-weight: 600; }
+  h3 { font-size: 1.05rem; font-weight: 600; }
+  h4 { font-size: .92rem; font-weight: 600; }
+  p { margin: 0; }
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: .72rem; font-weight: 500;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
+  }
+  .lede {
+    font-family: var(--serif); font-size: 1.12rem; line-height: 1.65;
+    color: var(--ink-soft); max-width: 38rem;
+  }
+  .note { font-size: .89rem; color: var(--muted); }
+
+  header.masthead { display: flex; flex-direction: column; gap: 1rem; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: .5rem 1.25rem;
+    font-family: var(--mono); font-size: .78rem; color: var(--muted);
+    border-top: 1px solid var(--rule); padding-top: .85rem;
+  }
+  .meta b { color: var(--ink-soft); font-weight: 500; }
+
+  section { display: flex; flex-direction: column; gap: 1.1rem; }
+  .section-head { display: flex; flex-direction: column; gap: .3rem; }
+
+  /* ---- honest framing box ---- */
+  .frame {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 6px; padding: 1.2rem 1.3rem;
+    display: flex; flex-direction: column; gap: .8rem;
+  }
+  .frame p { font-size: .94rem; color: var(--ink-soft); }
+
+  /* ---- phases ---- */
+  .phases { display: flex; flex-direction: column; gap: 1.5rem; }
+  .phase {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 8px; box-shadow: var(--shadow); overflow: hidden;
+  }
+  .phase-head {
+    display: flex; align-items: flex-start; gap: .9rem;
+    padding: 1.1rem 1.25rem; border-bottom: 1px solid var(--rule-soft);
+    background: var(--surface-2);
+  }
+  .pnum {
+    font-family: var(--mono); font-size: .8rem; font-weight: 600;
+    color: var(--accent-ink); background: var(--accent);
+    width: 1.75rem; height: 1.75rem; border-radius: 50%;
+    display: grid; place-items: center; flex: none;
+  }
+  .phase-title { display: flex; flex-direction: column; gap: .2rem; min-width: 0; flex: 1; }
+  .phase-title .when { font-family: var(--mono); font-size: .73rem; color: var(--muted); }
+  .phase-body { padding: 1.1rem 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+  .goal { font-size: .95rem; color: var(--ink-soft); }
+
+  ul.tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .55rem; }
+  ul.tasks li {
+    display: flex; gap: .6rem; align-items: flex-start;
+    font-size: .93rem; color: var(--ink-soft);
+  }
+  ul.tasks li::before {
+    content: "□"; font-family: var(--mono); color: var(--muted);
+    flex: none; line-height: 1.5;
+  }
+  ul.tasks li.done::before { content: "✓"; color: var(--done); }
+  ul.tasks li.done { color: var(--muted); }
+  ul.tasks li b { color: var(--ink); font-weight: 600; }
+
+  .exit {
+    background: var(--done-bg); border-radius: 5px;
+    padding: .7rem .9rem; font-size: .89rem; color: var(--ink-soft);
+    border-left: 3px solid var(--done);
+  }
+  .exit b { color: var(--done); }
+
+  .gate {
+    background: var(--gate-bg); border-radius: 5px;
+    padding: .8rem .9rem; font-size: .89rem; color: var(--ink-soft);
+    border-left: 3px solid var(--gate);
+    display: flex; flex-direction: column; gap: .4rem;
+  }
+  .gate b { color: var(--gate); }
+
+  .blocked {
+    background: var(--wait-bg); border-radius: 5px;
+    padding: .7rem .9rem; font-size: .89rem; color: var(--ink-soft);
+    border-left: 3px solid var(--wait);
+  }
+  .blocked b { color: var(--wait); }
+
+  .who {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--muted);
+    border: 1px solid var(--rule); border-radius: 3px; padding: .15rem .45rem;
+    white-space: nowrap;
+  }
+
+  .ledger { border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: var(--surface); }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .89rem; }
+  th, td { text-align: left; padding: .62rem 1rem; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  th { font-family: var(--mono); font-size: .7rem; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  code {
+    font-family: var(--mono); font-size: .84em;
+    background: var(--surface-2); padding: .1em .34em; border-radius: 3px;
+  }
+  pre {
+    font-family: var(--mono); font-size: .8rem; line-height: 1.55;
+    background: var(--surface-2); border: 1px solid var(--rule);
+    border-radius: 5px; padding: .8rem 1rem; margin: 0; overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; }
+  hr { border: none; border-top: 1px solid var(--rule); margin: 0; }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Forkable · plan to launch · 22 Aug 2026</div>
+    <h1>From here to five hundred</h1>
+    <p class="lede">
+      The software is finished. Everything between now and a real user base is
+      deployment, distribution, and three gaps nobody has written down yet. Each phase
+      below has one exit condition — a thing that has to be true before the next phase
+      is worth starting.
+    </p>
+    <div class="meta">
+      <span><b>5</b> phases</span>
+      <span><b>3</b> untracked gaps</span>
+      <span><b>2</b> hard gates</span>
+      <span>software: <b>done</b></span>
+    </div>
+  </header>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Before the plan</div>
+      <h2>What "500 users" has to mean</h2>
+    </div>
+    <div class="frame">
+      <p>
+        The number needs pinning down or the plan is unfalsifiable, because these are
+        three wildly different businesses:
+      </p>
+      <div class="ledger">
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Reading</th><th>Difficulty</th><th>What it actually proves</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>500 waitlist emails</td>
+                <td class="num">weeks</td>
+                <td>You can reach people. Says nothing about whether they'd pay.</td>
+              </tr>
+              <tr>
+                <td>500 registered accounts</td>
+                <td class="num">months</td>
+                <td>People will invest a click. Still not a business.</td>
+              </tr>
+              <tr>
+                <td>500 paying buyers</td>
+                <td class="num">a year+</td>
+                <td>A real company. At $99–149 a sale that's roughly $60k of volume.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p>
+        This plan targets <b>500 registered accounts with a meaningful fraction having
+        bought</b>. The honest sequencing point: the project's actual question — does
+        demo-before-pay plus a refund button change whether people buy? — gets answered
+        at <b>ten</b> users, not five hundred. Phase 3 is where the real risk sits.
+        Everything after it is scaling something already known to work, and there is no
+        point scaling something that doesn't.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Newly found</div>
+      <h2>Three gaps not on any existing roadmap</h2>
+    </div>
+    <div class="frame">
+      <p>
+        These turned up auditing the code against this goal. None are on the current
+        roadmap, and all three are load-bearing before real strangers arrive.
+      </p>
+      <ul class="tasks">
+        <li><b>There is no notification system whatsoever.</b> Not email, not in-app. A
+          seller makes a sale and is never told. A buyer refunds and nobody hears. A
+          marketplace where the seller learns about their own sale by refreshing a
+          dashboard does not function.</li>
+        <li><b>There is no analytics.</b> You cannot count 500 users, and more
+          importantly you cannot see whether people click the demo — which is the one
+          number the entire thesis rests on.</li>
+        <li><b>There is no moderation path.</b> A seller sets their own listing to
+          <code>live</code>; the <code>pending_review</code> status exists but nothing
+          consumes it. Fine with three listings that are all yours. Not fine the first
+          time a stranger lists something.</li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="phases">
+
+    <!-- PHASE 1 -->
+    <article class="phase">
+      <div class="phase-head">
+        <div class="pnum">1</div>
+        <div class="phase-title">
+          <h3>Get it on the internet</h3>
+          <div class="when">This week · blocked by nothing</div>
+        </div>
+        <span class="who">Rigel + Jack</span>
+      </div>
+      <div class="phase-body">
+        <p class="goal">
+          A public URL a stranger can open, use a demo on, and leave an email at. This
+          does not wait on Stripe — the landing page makes zero <code>/api/</code> calls,
+          so payments being in review blocks nothing here.
+        </p>
+        <ul class="tasks">
+          <li class="done">Code on GitHub, Supabase live, schema verified</li>
+          <li class="done">Security pass complete, 203 assertions passing</li>
+          <li>Install Node (nodejs.org, macOS <code>.pkg</code>, double-click)</li>
+          <li><b>Deploy:</b> <code>npx wrangler pages deploy .</code></li>
+          <li>Buy a domain and point it at the Pages project. <code>forkable.dev</code>
+            or similar — a <code>pages.dev</code> URL costs you credibility with the
+            exact audience you want</li>
+          <li><b>Add analytics.</b> Cloudflare Web Analytics is free, is a single script
+            tag, needs no cookie banner, and adds no build step. Turn it on before
+            traffic arrives, not after</li>
+          <li>Sign up on your own waitlist from your phone; confirm the row in Supabase</li>
+        </ul>
+        <div class="exit">
+          <b>Exit:</b> someone who is not you, Jack, or Luke opens the URL, clicks into
+          a working demo, and leaves an email.
+        </div>
+      </div>
+    </article>
+
+    <!-- PHASE 2 -->
+    <article class="phase">
+      <div class="phase-head">
+        <div class="pnum">2</div>
+        <div class="phase-title">
+          <h3>Make money actually work</h3>
+          <div class="when">Blocked on Stripe review</div>
+        </div>
+        <span class="who">Rigel</span>
+      </div>
+      <div class="phase-body">
+        <p class="goal">
+          Every line of this is written and unit-tested but has never moved a real cent.
+          Until a purchase and a refund both complete end to end, treat payments as
+          unproven.
+        </p>
+        <ul class="tasks">
+          <li>Stripe Connect platform profile submitted and approved</li>
+          <li>Register the webhook at <code>/api/webhook</code> with exactly three
+            events: <code>checkout.session.completed</code>,
+            <code>charge.refunded</code>, <code>account.updated</code></li>
+          <li>Fill all 7 values in <code>.dev.vars</code>; run
+            <code>node scripts/preflight.mjs</code> until it says Ready</li>
+          <li>Walk the whole loop locally: two accounts, buy with
+            <code>4242 4242 4242 4242</code>, then refund</li>
+          <li>Set the same 7 vars in the Cloudflare dashboard and <b>redeploy</b> —
+            environment variables do not apply retroactively to an existing deploy</li>
+          <li>Switch to <code>sk_live_</code>, and set a spend alert first</li>
+        </ul>
+        <div class="gate">
+          <b>⚠ Schedule two cron jobs. This is the quietest failure mode in the project.</b>
+          <span>Cloudflare Pages has no cron trigger, so both need an external caller
+          (GitHub Actions, cron-job.org) sending the same <code>CRON_SECRET</code>.
+          Without <code>/api/release-payouts</code>, <b>sellers are never paid and
+          nothing errors</b> — the money simply sits. Without
+          <code>/api/check-demos</code>, broken demos rot silently and the entire pitch
+          dies one listing at a time.</span>
+        </div>
+        <div class="exit">
+          <b>Exit:</b> one real purchase and one real refund, by someone who is not you,
+          with the seller payout landing after the window closes.
+        </div>
+      </div>
+    </article>
+
+    <!-- PHASE 3 -->
+    <article class="phase">
+      <div class="phase-head">
+        <div class="pnum">3</div>
+        <div class="phase-title">
+          <h3>First ten real users</h3>
+          <div class="when">The phase that actually matters</div>
+        </div>
+        <span class="who">Rigel + Luke</span>
+      </div>
+      <div class="phase-body">
+        <p class="goal">
+          This is where the thesis is tested. Ten strangers is enough to learn whether
+          demo-before-pay changes anything — and cheap enough that being wrong costs a
+          fortnight instead of a year. Recruit these by hand. Do not automate anything
+          here.
+        </p>
+        <ul class="tasks">
+          <li>Write down, before launching, what would count as failure. If nobody
+            clicks a demo, the product thesis is wrong and no amount of traffic fixes it</li>
+          <li>Post where builders already are: Indie Hackers, r/SideProject,
+            r/webdev, Hacker News <i>Show HN</i>, relevant Discord servers. Lead with the
+            live demo — that <i>is</i> the pitch</li>
+          <li>Message people directly. Ten conversations beats one broadcast at this stage</li>
+          <li><b>Watch demo click-through above everything else.</b> Visits are vanity;
+            the demo click is the thesis</li>
+          <li>Talk to everyone who signs up and does <i>not</i> buy. That is the most
+            valuable conversation available to you right now</li>
+        </ul>
+        <div class="exit">
+          <b>Exit:</b> ten strangers used a demo, and at least one bought without you
+          asking them to.
+        </div>
+      </div>
+    </article>
+
+    <!-- PHASE 4 -->
+    <article class="phase">
+      <div class="phase-head">
+        <div class="pnum">4</div>
+        <div class="phase-title">
+          <h3>Let other people sell</h3>
+          <div class="when">Hard security gate — do not shortcut</div>
+        </div>
+        <span class="who">Jack</span>
+      </div>
+      <div class="phase-body">
+        <p class="goal">
+          Three listings from one seller is not a marketplace. But opening supply is the
+          moment the security model stops being theoretical, because strangers start
+          supplying the strings your site renders and embeds.
+        </p>
+        <div class="gate">
+          <b>⚠ Set <code>demoOrigin</code> before accepting a single third-party demo.</b>
+          <span>Demos currently run from the app's own origin, which is only safe because
+          every one is your code. An iframe with <code>allow-same-origin</code> that is
+          <i>also</i> same-origin with the page can reach into it. Serve
+          <code>demos/</code> as a <b>second Cloudflare Pages project</b> and set
+          <code>demoOrigin</code> in <code>config.js</code> — that makes first-party
+          demos cross-origin like everyone else's, and the browser enforces the boundary
+          instead of us. This is not optional and it is not a later problem.</span>
+        </div>
+        <ul class="tasks">
+          <li>Second Pages project serving <code>demos/</code>; set
+            <code>demoOrigin</code>; confirm the first-party demos still load</li>
+          <li><b>Build notifications.</b> Minimum: seller emailed on a sale, buyer
+            emailed on purchase and on refund. A Pages Function calling Resend over plain
+            <code>fetch</code> keeps the no-build-step rule intact</li>
+          <li><b>Give yourself a moderation path.</b> It can start as a saved SQL query
+            plus the ability to set <code>status = 'delisted'</code>. What matters is
+            that you can take something down within minutes, not that it is pretty</li>
+          <li>Write the seller rules down publicly: what may be listed, what the demo
+            must do, when you will delist</li>
+          <li>Recruit 3–5 sellers by hand, the same way as the first ten users</li>
+        </ul>
+        <div class="exit">
+          <b>Exit:</b> a seller who is not you has listed a tool, passed review, and made
+          a sale.
+        </div>
+      </div>
+    </article>
+
+    <!-- PHASE 5 -->
+    <article class="phase">
+      <div class="phase-head">
+        <div class="pnum">5</div>
+        <div class="phase-title">
+          <h3>Scale to five hundred</h3>
+          <div class="when">Only once phases 3 and 4 have cleared</div>
+        </div>
+        <span class="who">All three</span>
+      </div>
+      <div class="phase-body">
+        <p class="goal">
+          Everything to this point was learning whether the thing works. This phase is
+          repetition of whatever channel worked in phase 3 — and the honest answer is
+          that you will not know which channel that is until you are there.
+        </p>
+        <ul class="tasks">
+          <li><b>Double down on the one channel that worked.</b> Resist adding a second
+            until the first is genuinely saturated</li>
+          <li><b>Use the request board as the demand engine.</b> Buyers posting what
+            they'd pay for is the cheapest market research that exists, and it gives new
+            sellers a reason to show up: visible demand with a price attached</li>
+          <li>Make each listing its own shareable page with real preview images — the
+            unit of distribution is a tool, not the homepage</li>
+          <li>Publish the JSON and RSS feeds you already built. Newsletters and
+            aggregators consume those without you doing anything</li>
+          <li>Watch what breaks: the unauthenticated GitHub API in
+            <code>/api/import-repo</code> caps out around 30 imports an hour across all
+            users; demo health checks are capped at 200 listings a run; the feed returns
+            50 items with no pagination</li>
+          <li>Revisit Stage 4 <b>only</b> when the request board tells you which part
+            people actually want</li>
+        </ul>
+        <div class="exit">
+          <b>Exit:</b> 500 registered accounts, a meaningful fraction having bought, and
+          a repeatable channel you understand.
+        </div>
+      </div>
+    </article>
+
+  </div>
+
+  <section>
+    <div class="section-head">
+      <div class="eyebrow">Still deferred</div>
+      <h2>What we are deliberately not building</h2>
+    </div>
+    <div class="frame">
+      <p>
+        Unchanged from the existing roadmap, and worth restating because with three
+        people the temptation to build multiplies: the fork-and-deploy manifest and
+        wizard, sandbox automation, a polished admin UI, multi-currency, per-buyer refund
+        limits.
+      </p>
+      <p>
+        They are not missing by accident. Every week on that list is a week not spent
+        finding out whether anyone buys. <b>Read the request board first</b> — it will
+        tell you which of these is actually wanted, and the answer is rarely the one that
+        was most fun to imagine.
+      </p>
+    </div>
+  </section>
+
+  <hr>
+
+  <p class="note">
+    Phase 1 is the only one with nothing in front of it. Everything else is either gated
+    on Stripe's review queue, on ten strangers telling you something true, or on a
+    security boundary that has to exist before strangers can supply content. Start there.
+  </p>
+
+</div>

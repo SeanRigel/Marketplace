@@ -48,6 +48,7 @@ it first with `git apply --check` against `origin/main`. Do not report work as p
 | File | What it's for |
 | --- | --- |
 | `ROADMAP.md` | **Canonical status.** What's done, what's next, what's blocking, decisions already settled |
+| `ONBOARDING.md` | If you are new to the project: access, secret handling, how work flows |
 | `CLAUDE.md` | The rules for working in the repo (constraints, security rules, secrets) |
 | `START-HERE.md` | Click-by-click for the next few hours of account setup |
 | `SETUP.md` | Longer per-system reference (Supabase, Stripe, Cloudflare) |

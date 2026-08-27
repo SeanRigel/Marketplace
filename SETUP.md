@@ -32,6 +32,7 @@ if the public can read `repo_url` or mint their own purchases.
    - `supabase/changelog.sql`
    - `supabase/licenses_and_requests.sql`
    - `supabase/import_quota.sql`
+   - `supabase/moderation.sql`
 
    ⚠️ **The fourth file is not optional.** Besides reviews and demo health, it fixes a
    security hole: views created without `security_invoker = on` run with the view

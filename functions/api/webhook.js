@@ -10,6 +10,8 @@
 import { json, fail, requireEnv, failSetup } from '../_shared/http.js';
 import { verifyWebhook } from '../_shared/stripe.js';
 import { sbAdmin } from '../_shared/supabase.js';
+import { sendEmail, userEmail, buyerReceipt, sellerSale, buyerRefunded, sellerRefunded }
+  from '../_shared/notify.js';
 
 export async function onRequestPost({ request, env }) {
   try {
@@ -88,6 +90,45 @@ async function onCheckoutComplete(env, session) {
       refund_window_expires_at: expires
     }
   });
+
+  // Everything below is best-effort. The purchase is already written and the
+  // money has already moved; a mail outage must not make this handler throw,
+  // because throwing here asks Stripe to redeliver an event we have processed.
+  await tellThemAboutTheSale(env, session, meta, days);
+}
+
+async function tellThemAboutTheSale(env, session, meta, refundDays) {
+  try {
+    const siteUrl = (env.SITE_URL || '').replace(/\/$/, '');
+
+    const rows = await sbAdmin(
+      env,
+      `/listings?select=title,seller_id&id=eq.${encodeURIComponent(meta.listing_id)}`
+    );
+    const listing = rows?.[0];
+    if (!listing) return;
+
+    const amountCents = session.amount_total;
+    const feeCents = Number(meta.platform_fee_cents || 0);
+    const license = meta.license === 'extended' ? 'extended' : 'single';
+
+    // The buyer's address is already on the session — no lookup needed.
+    const buyerAddr = session.customer_email || await userEmail(env, meta.buyer_id);
+    if (buyerAddr) {
+      await sendEmail(env, Object.assign({ to: buyerAddr }, buyerReceipt({
+        listingTitle: listing.title, amountCents, license, siteUrl, refundDays
+      })));
+    }
+
+    const sellerAddr = await userEmail(env, listing.seller_id);
+    if (sellerAddr) {
+      await sendEmail(env, Object.assign({ to: sellerAddr }, sellerSale({
+        listingTitle: listing.title, amountCents, feeCents, siteUrl, refundDays
+      })));
+    }
+  } catch (e) {
+    console.error('[webhook] sale notifications failed: ' + (e && e.message ? e.message : e));
+  }
 }
 
 async function onChargeRefunded(env, charge) {
@@ -99,6 +140,46 @@ async function onChargeRefunded(env, charge) {
     headers: { Prefer: 'return=minimal' },
     body: { status: 'refunded', refunded_at: new Date().toISOString() }
   });
+
+  // Fired from here rather than from refund.js so that refunds issued in the
+  // Stripe dashboard notify people too. charge.refunded is the one event both
+  // paths pass through.
+  await tellThemAboutTheRefund(env, charge);
+}
+
+async function tellThemAboutTheRefund(env, charge) {
+  try {
+    const rows = await sbAdmin(
+      env,
+      '/purchases?select=amount_cents,buyer_id,listing_id' +
+      `&stripe_payment_intent_id=eq.${encodeURIComponent(charge.payment_intent)}`
+    );
+    const purchase = rows?.[0];
+    if (!purchase) return;
+
+    const listings = await sbAdmin(
+      env,
+      `/listings?select=title,seller_id&id=eq.${encodeURIComponent(purchase.listing_id)}`
+    );
+    const listing = listings?.[0];
+    if (!listing) return;
+
+    const buyerAddr = await userEmail(env, purchase.buyer_id);
+    if (buyerAddr) {
+      await sendEmail(env, Object.assign({ to: buyerAddr }, buyerRefunded({
+        listingTitle: listing.title, amountCents: purchase.amount_cents
+      })));
+    }
+
+    const sellerAddr = await userEmail(env, listing.seller_id);
+    if (sellerAddr) {
+      await sendEmail(env, Object.assign({ to: sellerAddr }, sellerRefunded({
+        listingTitle: listing.title, amountCents: purchase.amount_cents
+      })));
+    }
+  } catch (e) {
+    console.error('[webhook] refund notifications failed: ' + (e && e.message ? e.message : e));
+  }
 }
 
 async function onAccountUpdated(env, account) {

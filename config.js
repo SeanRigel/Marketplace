@@ -23,6 +23,19 @@ window.FORKABLE_CONFIG = {
   supabaseUrl: 'https://wtqwuvdeurvwpypejpfp.supabase.co',
   supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind0cXd1dmRldXJ2d3B5cGVqcGZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyNjExMTcsImV4cCI6MjEwMjgzNzExN30.m62o-tu-JQks4RCr27K-VNrN8y1fZBL48bzOaYWn8V8',
   demoOrigin: '',
+
+  /* Cloudflare Web Analytics token. Leave blank and no analytics script loads
+   * at all — no beacon, no request, nothing to disclose.
+   *
+   * Chosen over the usual options deliberately: it sets no cookies and builds no
+   * cross-site profile, so it needs no consent banner, and it is one script tag,
+   * so it does not break the no-build-step rule. Get the token from the
+   * Cloudflare dashboard under Web Analytics.
+   *
+   * Turn this on BEFORE launch traffic arrives. Analytics cannot tell you about
+   * visits that already happened, and the number that matters most here — how
+   * many people click into a demo — is invisible without it. */
+  analyticsToken: '',
 };
 
 /* Featured listings.

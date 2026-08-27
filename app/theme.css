@@ -310,3 +310,10 @@ textarea.code { font-family: var(--mono); font-size: 13px; }
   padding: 30px 0; margin-top: 64px; font-size: 13px; color: var(--ink-3);
 }
 .footer-in { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+
+/* Footer legal links. Required on every page that takes money or collects an
+   email — Stripe asks for them before live mode, and a marketplace with no
+   visible terms reads as untrustworthy to exactly the audience we want. */
+.legal-links { display: inline-flex; gap: 14px; flex-wrap: wrap; }
+.legal-links a { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; }
+.legal-links a:hover { border-bottom-color: currentColor; }
