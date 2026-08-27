@@ -167,7 +167,7 @@ file, issue, or commit message. `config.js` is served to browsers, so **only the
 key** may go in it; `service_role` bypasses every policy in the database and lives only
 in server env vars.
 
-## Scars — eight bugs already shipped here, don't reintroduce them
+## Scars — nine failures already lived through here, don't repeat them
 
 1. **Postgres views bypass RLS by default.** A view runs with its *owner's* privileges
    unless created `with (security_invoker = on)`. `listings_with_seller` served draft and
@@ -226,6 +226,16 @@ in server env vars.
 Related: **client-side validation is not a security boundary.** The listing form runs in
 the browser; a hostile seller calls the API directly — which is exactly how the test
 listing for bug 3 was created. The render side and the database are what have to hold.
+
+9. **Copying a folder over a folder is a delete, not a merge.** 2026-08-22, and the
+   only one on this list that was a process failure rather than a code bug. Dragging an
+   update into the tree replaced `app/`, `functions/` and `supabase/` wholesale, removing
+   24 files that were not part of the update — the whole payments path, the SSRF guard,
+   every schema file — and it was pushed before anyone noticed. **The landing page
+   rendered perfectly the entire time**; the deleted files were ones nothing imports at
+   load. `./scripts/test.sh` found it immediately. Deliver changes as a patch (`git am`
+   is atomic), and run the suite against `origin/main` after pushing rather than against
+   the local copy that was never broken.
 
 Related to bug 2: `app/local-rules.test.mjs` now pins the localStorage backend to the
 same rules the SQL enforces (30 assertions). They passed first run — the mock had not

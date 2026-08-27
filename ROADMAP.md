@@ -25,8 +25,28 @@ a Supabase project, a Stripe account, and a deploy, all of which need accounts o
 you can create. The site could be publicly live today; only *payments* wait on Stripe's
 review queue.
 
-**Right now:** the repo is on GitHub and Supabase is live. Remaining Stage 1 work is
-the Cloudflare deploy.
+**Right now (2026-08-22, end of session):** everything built so far is pushed and
+verified on GitHub at `8acaacd`. Supabase is live with all eight SQL files applied.
+**The single remaining Stage 1 item is the Cloudflare deploy — there is still no public
+URL, and nothing else can be tested by a real person until there is.**
+
+Built and pushed this session, all of it previously missing entirely:
+
+| | |
+| --- | --- |
+| Transactional email | Receipts, seller sale alerts, refunds both ways, demo-down warnings. Inert until `RESEND_API_KEY` is set |
+| Terms + Privacy | A hard blocker — Stripe requires published terms before live mode |
+| Analytics | Cloudflare Web Analytics, off until `analyticsToken` is set. **Turn on before traffic** |
+| Moderation | Admin queue, takedowns, an append-only log. Verified against the database |
+| `AGENTS.md` | Vendor-neutral handover, so this project can be picked up by any tool |
+
+262 assertions, all passing against what is actually on GitHub — not against a local
+copy. Confirmed by checking out `origin/main` and running the suite there.
+
+**Still unset, and each one matters:** `RESEND_API_KEY` (so nobody is ever notified),
+`analyticsToken` (so the launch is unmeasurable), a real `support@` inbox — the Terms
+and Privacy pages both promise `support@forkable.dev` and **nothing is behind it**.
+Stripe was mid-signup and its status is unknown.
 
 ✅ **Pushed to GitHub 2026-08-21** — `github.com/SeanRigel/Marketplace`, 17 commits on
 `main`. The Mac is no longer the only copy. Secret audit confirmed clean: `.dev.vars`
@@ -274,6 +294,29 @@ pay for is the best research you'll get.
 ---
 
 ## Scars worth remembering
+
+**Copying a folder over a folder is a delete, not a merge — and the site looks fine
+afterwards.** 2026-08-22. Moving an update into the working tree by dragging folders in
+Finder replaced `app/`, `functions/` and `supabase/` wholesale. Every file in them that
+was not part of the update was removed: the entire payments path (`checkout.js`,
+`refund.js`, `connect.js`, `release-payouts.js`), the SSRF guard, and all eight schema
+files. 24 files, pushed to `main` before anyone noticed.
+
+macOS gives no warning naming what is about to disappear, and the deleted files were
+mostly ones nothing else imports at load time — so **the landing page rendered perfectly
+while `/api/checkout` no longer existed.** Nothing visual would ever have shown it.
+
+`./scripts/test.sh` caught it in one run. Recovery was easy because the files were still
+in history.
+
+Two rules out of it:
+
+- **Deliver changes as a patch, never as files to copy.** `git am` is atomic: it applies
+  completely or not at all, and it cannot silently delete.
+- **Run the suite against `origin/main` after a push, not against the local copy.** The
+  local copy was fine. Only the pushed tree was broken, and only checking the pushed
+  tree would have found it.
+
 
 **The RSS feed could be taken down by one seller's title.** Found 2026-08-21. The RSS
 branch of `/api/feed` escaped `<>&'"` but not control characters. Postgres text happily
