@@ -15,6 +15,14 @@ STRIPE_WEBHOOK_SECRET=whsec_...     # from `stripe listen` or the webhook endpoi
 SITE_URL=http://localhost:8788      # your deployed origin in production
 CRON_SECRET=generate-a-long-random-string
 
+# Transactional email: receipts, sale notifications, refund confirmations, and
+# the alert a seller gets when their demo goes down. Leave RESEND_API_KEY blank
+# and the site works exactly as before -- it simply sends nothing, and logs what
+# it would have sent. Get a key at resend.com (free tier is 3,000/month).
+RESEND_API_KEY=re_...
+MAIL_FROM=Forkable <hello@yourdomain.com>   # must be a domain verified in Resend
+SUPPORT_EMAIL=support@yourdomain.com        # where replies land; a real inbox
+
 # Only needed for "draft a listing from a GitHub repo" (/api/import-repo).
 # SECRET. Every click spends money — SET A SPEND LIMIT in the Anthropic console
 # before you put this key anywhere. Leave blank and the feature simply stays off.
