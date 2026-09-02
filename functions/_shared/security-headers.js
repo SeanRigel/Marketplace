@@ -29,10 +29,14 @@ export function applySecurityHeaders(headers, opts) {
   opts = opts || {};
   if (!headers.has('X-Content-Type-Options')) headers.set('X-Content-Type-Options', 'nosniff');
   if (!headers.has('Referrer-Policy')) headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  // DENY on /demos/* and /api/demo-launch blanks the in-page trial iframe.
-  // Those URLs are same-origin embeds; everything else stays unframeable.
-  if (!headers.has('X-Frame-Options')) {
-    headers.set('X-Frame-Options', opts.embeddable ? 'SAMEORIGIN' : 'DENY');
+  // SAMEORIGIN, not DENY: the product iframes first-party /demos/* on this
+  // origin. CSP frame-ancestors 'self' still blocks other sites from framing us.
+  // Embeddable responses overwrite a DENY that static _headers may have set.
+  if (opts.embeddable) {
+    headers.delete('X-Frame-Options');
+    headers.set('X-Frame-Options', 'SAMEORIGIN');
+  } else if (!headers.has('X-Frame-Options')) {
+    headers.set('X-Frame-Options', 'SAMEORIGIN');
   }
   if (!headers.has('Permissions-Policy')) {
     headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(self)');

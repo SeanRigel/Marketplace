@@ -15,7 +15,7 @@ function ok(name, cond) {
 
 const h = applySecurityHeaders(new Headers());
 check('nosniff', h.get('X-Content-Type-Options'), 'nosniff');
-check('frame deny', h.get('X-Frame-Options'), 'DENY');
+check('frame same-origin', h.get('X-Frame-Options'), 'SAMEORIGIN');
 check('referrer', h.get('Referrer-Policy'), 'strict-origin-when-cross-origin');
 ok('CSP present', /frame-ancestors 'self'/.test(h.get('Content-Security-Policy') || ''));
 ok('CSP blocks object', /object-src 'none'/.test(h.get('Content-Security-Policy') || ''));
@@ -23,6 +23,9 @@ ok('CSP no * script hosts', !/script-src[^;]*\*/.test(h.get('Content-Security-Po
 
 const embed = applySecurityHeaders(new Headers(), { embeddable: true });
 check('embeddable demos are SAMEORIGIN', embed.get('X-Frame-Options'), 'SAMEORIGIN');
+const denied = new Headers({ 'X-Frame-Options': 'DENY' });
+applySecurityHeaders(denied, { embeddable: true });
+check('embeddable overwrites DENY', denied.get('X-Frame-Options'), 'SAMEORIGIN');
 
 const existing = new Headers({ 'X-Frame-Options': 'SAMEORIGIN' });
 applySecurityHeaders(existing);
