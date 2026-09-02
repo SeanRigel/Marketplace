@@ -21,6 +21,9 @@ ok('CSP present', /frame-ancestors 'self'/.test(h.get('Content-Security-Policy')
 ok('CSP blocks object', /object-src 'none'/.test(h.get('Content-Security-Policy') || ''));
 ok('CSP no * script hosts', !/script-src[^;]*\*/.test(h.get('Content-Security-Policy') || ''));
 
+const embed = applySecurityHeaders(new Headers(), { embeddable: true });
+check('embeddable demos are SAMEORIGIN', embed.get('X-Frame-Options'), 'SAMEORIGIN');
+
 const existing = new Headers({ 'X-Frame-Options': 'SAMEORIGIN' });
 applySecurityHeaders(existing);
 check('does not overwrite existing', existing.get('X-Frame-Options'), 'SAMEORIGIN');

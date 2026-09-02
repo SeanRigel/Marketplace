@@ -981,8 +981,10 @@
             setSession(null);
             throw new Error('Your session expired. Sign in again, then save.');
           }
-          setSession(json);
-          return json;
+          // GoTrue refresh sometimes omits `user`. Keep the existing one so
+          // createListing does not crash on u.id after a long GitHub draft.
+          setSession(Object.assign({}, s, json, { user: json.user || s.user }));
+          return session();
         });
       }).then(function (next) {
         refreshInFlight = null;
@@ -1005,13 +1007,23 @@
     }
 
     function failBody(json, status) {
-      var m = (json && (json.msg || json.message || json.error_description || json.error)) ||
+      var m = (json && (json.msg || json.message || json.error_description || json.error || json.hint)) ||
               ('Request failed (' + status + ')');
-      if (/jwt|expired|PGRST301/i.test(String(m) + (json && json.code || ''))) {
+      var blob = String(m) + (json && json.code || '') + (json && json.details || '');
+      if (/jwt|expired|PGRST301/i.test(blob)) {
         return 'Your session expired. Sign in again, then save.';
       }
-      if (/42501|permission denied/i.test(String(m) + (json && json.code || ''))) {
-        return 'Could not save the listing (missing permission). Sign out, sign in, and try again.';
+      if (/invalid input value for enum listing_category/i.test(blob)) {
+        return 'That category is not available on this site yet. Pick another category and save again.';
+      }
+      if (/null value in column "?price_cents"?/i.test(blob)) {
+        return 'Enter a price in dollars, like 99.';
+      }
+      if (/listings_extended_price_check/i.test(blob)) {
+        return 'The unlimited-client price has to be higher than the single-client price.';
+      }
+      if (/42501|permission denied/i.test(blob)) {
+        return 'Could not save (missing permission). Sign out, sign in, and try again.';
       }
       return m;
     }
@@ -1073,12 +1085,14 @@
       myProfile: function () {
         var u = this.currentUser();
         if (!u) return Promise.resolve(null);
-        return rest('/profiles?select=*&id=eq.' + u.id).then(function (r) { return r && r[0]; });
+        // select=* fails: stripe_* and is_admin are column-revoked (same scar as repo_url).
+        return rest('/profiles?select=id,display_name,role,bio,created_at&id=eq.' + u.id)
+          .then(function (r) { return r && r[0]; });
       },
 
       updateProfile: function (patch) {
         var u = this.currentUser();
-        return rest('/profiles?id=eq.' + u.id, {
+        return rest('/profiles?id=eq.' + u.id + '&select=id,display_name,role,bio,created_at', {
           method: 'PATCH', body: patch, headers: { 'Prefer': 'return=representation' }
         }).then(function (r) { return r && r[0]; });
       },
@@ -1205,6 +1219,9 @@
 
       createListing: function (data) {
         var u = this.currentUser();
+        if (!u || !u.id) {
+          return Promise.reject(new Error('Your session expired. Sign in again, then save.'));
+        }
         // return=minimal: repo_url and demo_url are not SELECTable, so RETURNING *
         // (representation) fails with permission denied even when the insert worked.
         return rest('/listings', {

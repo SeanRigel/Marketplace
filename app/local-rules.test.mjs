@@ -361,6 +361,17 @@ await DB.signOut();
   await DB.signOut();
 }
 
+/* ---------------------------------------------- live-backend query shape
+ * Column-revoked fields (stripe_*, is_admin, repo_url, demo_url) make
+ * `select=*` a permission denied for the whole row. Pin the queries. */
+{
+  check('myProfile lists public columns',
+        /profiles\?select=id,display_name,role,bio,created_at/.test(SRC), true);
+  check('myProfile does not select *', /profiles\?select=\*/.test(SRC), false);
+  check('createListing uses return=minimal',
+        /createListing:[\s\S]*?Prefer': 'return=minimal'/.test(SRC), true);
+}
+
 /* ---------------------------------------------- report */
 if (fail) {
   console.log(`\n  ${pass} passed, ${fail} FAILED`);

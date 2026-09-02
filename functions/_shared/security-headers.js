@@ -25,10 +25,15 @@ const CSP = [
   'upgrade-insecure-requests'
 ].join('; ');
 
-export function applySecurityHeaders(headers) {
+export function applySecurityHeaders(headers, opts) {
+  opts = opts || {};
   if (!headers.has('X-Content-Type-Options')) headers.set('X-Content-Type-Options', 'nosniff');
   if (!headers.has('Referrer-Policy')) headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  if (!headers.has('X-Frame-Options')) headers.set('X-Frame-Options', 'DENY');
+  // DENY on /demos/* and /api/demo-launch blanks the in-page trial iframe.
+  // Those URLs are same-origin embeds; everything else stays unframeable.
+  if (!headers.has('X-Frame-Options')) {
+    headers.set('X-Frame-Options', opts.embeddable ? 'SAMEORIGIN' : 'DENY');
+  }
   if (!headers.has('Permissions-Policy')) {
     headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(self)');
   }

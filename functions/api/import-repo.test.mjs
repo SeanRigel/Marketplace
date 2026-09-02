@@ -6,7 +6,7 @@
  *
  *   node functions/api/import-repo.test.mjs
  */
-import { parseRepoUrl, parseGithubToken } from './import-repo.js';
+import { parseRepoUrl, parseGithubToken, githubRepoErrorMessage, fallbackDraft } from './import-repo.js';
 
 let pass = 0, fail = 0;
 const eq = (name, actual, expected) => {
@@ -52,6 +52,23 @@ eq('strips whitespace', parseGithubToken('  ghp_' + 'c'.repeat(36) + '  ') ? 'ok
 eq('whitespace only', parseGithubToken('   '), null);
 eq('random string', parseGithubToken('sk-ant-not-github'), null);
 eq('too short', parseGithubToken('ghp_short'), null);
+
+console.log('\nPrivate-repo error copy:');
+eq('no token 404', githubRepoErrorMessage(404, { hasToken: false }).indexOf('Paste a GitHub token') > -1, true);
+eq('token 404 names the grant', githubRepoErrorMessage(404, { hasToken: true }).indexOf('Contents must be Read-only') > -1, true);
+eq('token 404 can name the login', githubRepoErrorMessage(404, { hasToken: true, login: 'luke' }).indexOf('@luke') > -1, true);
+eq('401 is a rejected token', githubRepoErrorMessage(401, { hasToken: true }).indexOf('rejected') > -1, true);
+eq('403 resource-not-accessible is a grant miss', githubRepoErrorMessage(403, {
+  hasToken: true, githubMessage: 'Resource not accessible by personal access token'
+}).indexOf('cannot see that private repo') > -1, true);
+eq('403 SSO', githubRepoErrorMessage(403, {
+  hasToken: true, githubMessage: 'Resource protected by organization SAML SSO'
+}).indexOf('SSO') > -1, true);
+
+console.log('\nFallback draft when Claude cannot run:');
+eq('repo url', fallbackDraft({ owner: 'luke', name: 'my-bot' }, {}).repo_url, 'https://github.com/luke/my-bot');
+eq('title from slug', fallbackDraft({ owner: 'luke', name: 'shift-scheduler' }, {}).title, 'Shift Scheduler');
+eq('keeps description', fallbackDraft({ owner: 'a', name: 'b' }, { description: 'Does X' }).short_description, 'Does X');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

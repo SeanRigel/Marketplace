@@ -376,13 +376,20 @@
       }
 
       if (!live.length) {
-        box.innerHTML = '<div class="empty"><h3>Nothing matches</h3>' +
-          '<p>No live listings fit those filters.</p>' +
-          '<button class="btn btn-secondary" id="clear-all">Clear filters</button></div>';
-        el('clear-all').onclick = function () {
-          browseState = { q: '', category: '', tag: '', sort: 'newest' };
-          viewBrowse({});
-        };
+        var filtered = !!(browseState.q || browseState.category || browseState.tag);
+        box.innerHTML = filtered
+          ? '<div class="empty"><h3>Nothing matches</h3>' +
+            '<p>No live listings fit those filters.</p>' +
+            '<button class="btn btn-secondary" id="clear-all">Clear filters</button></div>'
+          : '<div class="empty"><h3>Catalog is just getting started</h3>' +
+            '<p>No live listings in the database yet. The home page still has working demos you can try.</p>' +
+            '<a class="btn btn-primary" href="index.html">Try the live demos</a></div>';
+        if (filtered) {
+          el('clear-all').onclick = function () {
+            browseState = { q: '', category: '', tag: '', sort: 'newest' };
+            viewBrowse({});
+          };
+        }
         return;
       }
 
@@ -590,7 +597,11 @@
           setTimeout(function () { go('#/dashboard/buyer'); }, 700);
         }).catch(function (err) {
           btn.disabled = false;
-          setMsg(m, err.message, 'err');
+          var t = (err && err.message) || 'Checkout failed.';
+          if (/isn.?t switched on/i.test(t)) {
+            t = 'Checkout isn\'t on yet — you can still try the demo. We\'ll turn buying on once payments are approved.';
+          }
+          setMsg(m, t, 'err');
         });
       };
     }).catch(function (e) { view.innerHTML = fail(e); });
@@ -1125,7 +1136,10 @@
 
     Promise.all([
       DB.myListings(),
-      DB.connectStatus().catch(function (e) { return { error: e.message }; }),
+      DB.connectStatus().catch(function (e) {
+        var msg = e && e.message ? e.message : String(e);
+        return { error: msg, switched_off: /isn.?t switched on/i.test(msg) };
+      }),
       DB.sellerEarnings().catch(function () { return null; })
     ]).then(function (res) {
       var rows = res[0], connect = res[1] || {}, earn = res[2] || {};
@@ -1134,10 +1148,15 @@
       var pending = rows.filter(function (l) { return l.status === 'pending_review'; }).length;
 
       var connectBanner;
+      var connectOff = connect.switched_off || /isn.?t switched on/i.test(connect.error || '');
       if (connect.local) {
         connectBanner = '<div class="notice">' +
           '<b>Payouts need the live backend.</b> Stripe Connect onboarding runs through ' +
           'the API functions — add Supabase and Stripe keys, then deploy, to enable it.</div>';
+      } else if (connectOff) {
+        connectBanner = '<div class="notice">' +
+          '<b>Payouts aren\'t switched on yet.</b> You can still create draft listings and ' +
+          'attach a private GitHub repo. Stripe checkout comes next.</div>';
       } else if (!connect.connected) {
         connectBanner = '<div class="notice warn">' +
           '<b>You can\'t be paid yet.</b> Connect a Stripe account to receive payouts. ' +
@@ -1244,7 +1263,8 @@
             '<b>Start from a GitHub repo</b>' +
             '<p>Keep the repo <em>private</em> — that\'s what you\'re selling. Paste the URL. ' +
               'If it\'s private, paste a GitHub token too. We read the README once and ' +
-              '<strong>never save the token</strong>.</p>' +
+              '<strong>never save the token</strong>. You can skip this and type the listing ' +
+              'by hand — put the repo URL in the field below.</p>' +
             '<div class="row">' +
               '<input id="repo-url" placeholder="https://github.com/you/your-tool">' +
             '</div>' +
@@ -1434,16 +1454,22 @@
             if (el('gh-token')) el('gh-token').value = '';
             var d = r.draft || {};
             // Fill, don't overwrite: anything the seller already typed wins.
+            // Always attach the repo URL — that is the product even when Claude
+            // could not draft the rest.
             if (!el('title').value) el('title').value = d.title || '';
             if (!el('short').value) el('short').value = d.short_description || '';
             if (!el('long').value) el('long').value = d.long_description || '';
             if (!el('setup').value) el('setup').value = d.setup_instructions || '';
             if (!el('repo').value) el('repo').value = d.repo_url || url;
             if (!el('tags').value) el('tags').value = (d.tech_stack_tags || []).join(', ');
-            if (d.category) el('cat').value = d.category;
+            if (d.category && !r.github_only) el('cat').value = d.category;
             paintSetupHint();
             paintQuality();
 
+            if (r.github_only) {
+              setMsg(msg, r.notes || 'Repo attached. Fill the rest in by hand, then save as a draft.', 'err');
+              return;
+            }
             var note = 'Draft filled in — read it before saving.' +
               (r.confidence === 'low'
                 ? ' Claude flagged this one as low confidence, so check it closely.' : '') +
@@ -1454,6 +1480,11 @@
             setMsg(msg, err.message, 'err');
           });
         };
+        function importOnEnter(e) {
+          if (e.key === 'Enter') { e.preventDefault(); importBtn.click(); }
+        }
+        if (el('repo-url')) el('repo-url').addEventListener('keydown', importOnEnter);
+        if (el('gh-token')) el('gh-token').addEventListener('keydown', importOnEnter);
       }
 
       el('test-demo').onclick = function () {
@@ -1496,8 +1527,11 @@
         if (!data.short_description) {
           setMsg(m, 'A short description is what buyers skim.', 'err'); return;
         }
+        if (!isFinite(data.price_cents) || data.price_cents < 0) {
+          setMsg(m, 'Enter a price in dollars, like 99.', 'err'); return;
+        }
         if (data.extended_price_cents !== null &&
-            data.extended_price_cents <= data.price_cents) {
+            (!isFinite(data.extended_price_cents) || data.extended_price_cents <= data.price_cents)) {
           setMsg(m, 'The unlimited-client price has to be higher than the single-client price.', 'err');
           return;
         }

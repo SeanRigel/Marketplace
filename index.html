@@ -373,8 +373,17 @@
           <div class="addr" id="m-url"></div>
           <span class="badge badge-live"><span class="dot"></span>live sandbox</span>
         </div>
+        <div class="hero-demo-ph" id="m-trial">
+          <div>
+            <b>Try the live tool</b>
+            One timed free trial per day. Click start — opening the card does not burn it.
+            <div style="margin-top:14px">
+              <button type="button" class="btn btn-primary" id="m-start">Start free trial</button>
+            </div>
+          </div>
+        </div>
         <iframe class="demo-frame" id="m-frame" title="Live demo" loading="lazy" referrerpolicy="no-referrer"
-                sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"></iframe>
+                sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads" hidden></iframe>
         <div class="demo-note" id="m-note"></div>
       </div>
       <div class="side">
@@ -552,7 +561,7 @@
       (l.demo || l.has_demo ? '<span class="badge badge-live"><span class="dot"></span>Live demo</span>' : '') +
       '<span class="badge">' + esc(CATS[l.category] || l.category) + '</span>' +
       '<span class="badge">by ' + esc(l.seller.name) + '</span>';
-    $('m-url').textContent = 'Starting free trial…';
+    $('m-url').textContent = 'live sandbox · free trial';
     $('m-note').textContent = 'One timed free trial per day. Buy to keep using it.';
     $('m-price').textContent = money(l.priceCents);
     $('m-deploy').textContent = l.deployMinutes ? '~' + l.deployMinutes + ' min' : 'see listing';
@@ -565,43 +574,72 @@
     $('m-buy').setAttribute('href', l.href || '#join');
     $('m-buy').textContent = l.href ? 'View full listing →' : 'Buy — early access';
     frame.src = 'about:blank';
+    frame.hidden = true;
+    var trial = $('m-trial');
+    var startBtn = $('m-start');
+    if (trial) trial.hidden = false;
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.textContent = 'Start free trial';
+    }
     modal.classList.add('open');
     document.body.style.overflow = 'hidden';
     $('m-close').focus();
 
-    if (!(l.demo || l.has_demo || l.id)) return;
+    if (!(l.demo || l.has_demo || l.id)) {
+      if (trial) trial.hidden = true;
+      $('m-note').textContent = 'No demo on this listing yet.';
+      return;
+    }
+
     var opts = l.listingId
       ? { listingId: l.listingId }
       : { featuredId: l.id };
-    DB.startDemoSession(opts).then(function (session) {
-      var launch = FKUrl.safeLaunch(session && session.launch_url);
-      if (!launch) {
-        $('m-url').textContent = 'Demo locked';
-        $('m-note').textContent = 'The demo session did not return a safe link.';
-        return;
+
+    function startTrial() {
+      if (startBtn) {
+        startBtn.disabled = true;
+        startBtn.textContent = 'Starting…';
       }
-      // No allow-same-origin: first-party /demos/* share this origin. Scripts
-      // plus same-origin would let a demo read the marketplace login.
-      frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups allow-modals allow-downloads');
-      frame.src = launch;
-      $('m-url').textContent = session.unlimited
-        ? 'live sandbox · unlocked'
-        : 'live sandbox · trial';
-      $('m-note').innerHTML = (session.unlimited
-        ? 'Unlocked access. '
-        : 'Timed free trial — one session per day. ') +
-        '<a href="' + esc(launch) + '" target="_blank" rel="noopener">Open in a new tab ↗</a>';
-    }).catch(function (err) {
-      $('m-url').textContent = 'Demo locked';
-      $('m-note').textContent = (err && err.message) ||
-        "Today's free trial is used up. Come back tomorrow, or buy the tool.";
-      frame.src = 'about:blank';
-    });
+      $('m-url').textContent = 'Starting free trial…';
+      DB.startDemoSession(opts).then(function (session) {
+        var launch = FKUrl.safeLaunch(session && session.launch_url);
+        if (!launch) {
+          $('m-url').textContent = 'Demo locked';
+          $('m-note').textContent = 'The demo session did not return a safe link.';
+          if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'Start free trial'; }
+          return;
+        }
+        // No allow-same-origin: first-party /demos/* share this origin. Scripts
+        // plus same-origin would let a demo read the marketplace login.
+        frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups allow-modals allow-downloads');
+        frame.src = launch;
+        frame.hidden = false;
+        if (trial) trial.hidden = true;
+        $('m-url').textContent = session.unlimited
+          ? 'live sandbox · unlocked'
+          : 'live sandbox · trial';
+        $('m-note').innerHTML = (session.unlimited
+          ? 'Unlocked access. '
+          : 'Timed free trial — one session per day. ') +
+          '<a href="' + esc(launch) + '" target="_blank" rel="noopener">Open in a new tab ↗</a>';
+      }).catch(function (err) {
+        $('m-url').textContent = 'Demo locked';
+        $('m-note').textContent = (err && err.message) ||
+          "Today's free trial is used up. Come back tomorrow, or buy the tool.";
+        frame.src = 'about:blank';
+        frame.hidden = true;
+        if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'Try again'; }
+      });
+    }
+
+    if (startBtn) startBtn.onclick = startTrial;
   }
 
   function closeModal() {
     modal.classList.remove('open');
     frame.src = 'about:blank';
+    frame.hidden = true;
     document.body.style.overflow = '';
     if (lastFocus) lastFocus.focus();
   }

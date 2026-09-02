@@ -102,10 +102,29 @@ export async function onRequestPost({ request, env }) {
   try {
     source = await fetchRepoContext(repo, token);
   } catch (e) {
-    return fail(e.message, 502);
+    const msg = e.message || 'GitHub request failed.';
+    const status = /rejected/i.test(msg) ? 401
+      : /SSO/i.test(msg) ? 403
+      : /private or missing|cannot see that private repo/i.test(msg) ? 404
+      : 502;
+    return fail(msg, status);
   }
+
+  // GitHub succeeded. If Claude/quota/README fail, still hand back the repo URL
+  // so the seller is not stuck with an empty form after a working token.
+  const attached = fallbackDraft(repo, source);
+  function attachOnly(notes) {
+    return json({
+      draft: attached,
+      confidence: 'low',
+      notes: notes,
+      github_only: true
+    });
+  }
+
   if (!source.readme) {
-    return fail('That repository has no README we can read, so there is nothing to draft from.', 422);
+    return attachOnly(
+      'That repository has no README we can read. The repo URL is filled in — write the listing by hand.');
   }
 
   // Spend cap AFTER GitHub succeeds. A bad token or private-repo miss must not
@@ -125,19 +144,17 @@ export async function onRequestPost({ request, env }) {
 
     if (verdict && verdict.allowed === false) {
       if (verdict.reason === 'global') {
-        return fail(
-          'Auto-drafting has hit its daily limit across the whole site. ' +
-          'Try again tomorrow, or fill the listing in by hand.', 429);
+        return attachOnly(
+          'Auto-drafting has hit its daily limit across the whole site. The repo URL is filled in — write the rest by hand.');
       }
-      return fail(
-        `You have used all ${verdict.per_user_limit} auto-drafts for today. ` +
-        'Fill this one in by hand, or try again tomorrow.', 429);
+      return attachOnly(
+        `You have used all ${verdict.per_user_limit} auto-drafts for today. The repo URL is filled in — write the rest by hand.`);
     }
   } catch (e) {
-    // If the cap cannot be evaluated, refuse. The alternative is to fail open on
-    // the one route that spends real money, which is how a key gets drained.
+    // If the cap cannot be evaluated, do not spend. Still attach the repo.
     console.error('[import-repo] quota check failed: ' + (e && e.message ? e.message : e));
-    return fail('Could not verify your daily draft limit. Try again shortly.', 503);
+    return attachOnly(
+      'Could not verify your daily draft limit. The repo URL is filled in — write the rest by hand.');
   }
 
   const controller = new AbortController();
@@ -182,29 +199,31 @@ export async function onRequestPost({ request, env }) {
     const payload = await res.json().catch(() => null);
 
     if (!res.ok) {
-      const msg = payload?.error?.message || `Claude returned ${res.status}`;
-      // 401/403 here means the key is wrong — say so plainly rather than
-      // surfacing it as a generic upstream failure.
-      return fail(res.status === 401 || res.status === 403
-        ? 'The Anthropic API key was rejected. Check ANTHROPIC_API_KEY.'
-        : msg, 502);
+      console.error('[import-repo] claude', res.status, payload?.error?.message || '');
+      return attachOnly(
+        'Could not auto-draft from the README just now. The repo URL is filled in — write the rest by hand.');
     }
 
     // Always check stop_reason before reading content — a refusal returns HTTP 200
     // with empty or partial content, and indexing content[0] would throw.
     if (payload.stop_reason === 'refusal') {
-      return fail('Claude declined to draft from that repository. Fill the listing in by hand.', 422);
+      return attachOnly(
+        'Claude declined to draft from that repository. The repo URL is filled in — write the rest by hand.');
     }
 
     var text = (payload.content || []).filter(function (b) { return b.type === 'text'; })
       .map(function (b) { return b.text; }).join('');
-    if (!text) return fail('Claude returned an empty draft. Try again.', 502);
+    if (!text) {
+      return attachOnly(
+        'Claude returned an empty draft. The repo URL is filled in — write the rest by hand.');
+    }
 
     let draft;
     try {
       draft = JSON.parse(text);
     } catch {
-      return fail('Could not read the draft Claude returned.', 502);
+      return attachOnly(
+        'Could not read the auto-draft. The repo URL is filled in — write the rest by hand.');
     }
 
     return json({
@@ -227,9 +246,11 @@ export async function onRequestPost({ request, env }) {
       }
     });
   } catch (e) {
-    return fail(e.name === 'AbortError'
-      ? 'Claude took too long. Try again, or fill the listing in by hand.'
-      : `Draft failed: ${e.message}`, 502);
+    console.error('[import-repo] draft', e && e.message ? e.message : e);
+    return attachOnly(
+      e.name === 'AbortError'
+        ? 'Auto-draft took too long. The repo URL is filled in — write the rest by hand.'
+        : 'Auto-draft failed. The repo URL is filled in — write the rest by hand.');
   } finally {
     clearTimeout(timer);
   }
@@ -275,6 +296,48 @@ export function parseGithubToken(raw) {
   return s;
 }
 
+export function fallbackDraft(repo, source) {
+  source = source || {};
+  const raw = String(repo && repo.name || 'tool');
+  const title = raw.replace(/[-_]+/g, ' ').replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); });
+  const topics = Array.isArray(source.topics) ? source.topics.slice(0, 6) : [];
+  return {
+    title: title,
+    short_description: source.description || '',
+    long_description: '',
+    category: 'other',
+    tech_stack_tags: topics,
+    setup_instructions: '',
+    repo_url: 'https://github.com/' + repo.owner + '/' + repo.name
+  };
+}
+
+export function githubRepoErrorMessage(status, opts) {
+  opts = opts || {};
+  const hasToken = !!opts.hasToken;
+  const login = opts.login || '';
+  const githubMessage = String(opts.githubMessage || '');
+  if (status === 401) {
+    return 'That GitHub token was rejected. Check it and try again. We did not save it.';
+  }
+  if (status === 404 || (status === 403 && /Resource not accessible/i.test(githubMessage))) {
+    if (!hasToken) {
+      return 'That repository is private or missing. Paste a GitHub token — we read the README once and never save the token.';
+    }
+    const who = login ? ' (signed in as @' + login + ')' : '';
+    return 'GitHub still cannot see that private repo with this token' + who +
+      '. On the token: Repository access must include this exact repo, and Contents must be Read-only. ' +
+      'If the repo is under an organization, click Enable SSO on the token. The URL must be github.com/owner/repo.';
+  }
+  if (status === 403 && /SSO|organization/i.test(githubMessage)) {
+    return 'This token needs SSO authorization for the organization. Open GitHub → the token → Authorize (SSO), then try again.';
+  }
+  if (status === 403) {
+    return 'GitHub refused the request (rate limit or permissions). Wait a few minutes, or give the token Contents: Read on that repo.';
+  }
+  return 'GitHub returned ' + status + '.';
+}
+
 function githubHeaders(token, scheme) {
   const headers = {
     Accept: 'application/vnd.github+json',
@@ -293,33 +356,40 @@ async function githubRepoMeta(repo, token) {
     const res = await fetch(url, { headers: githubHeaders(token, scheme) });
     last = { res, scheme };
     if (res.ok) return last;
-    // 401/404: this scheme didn't count as access. Try the other before giving up.
-    if (token && (res.status === 401 || res.status === 404) && scheme === 'Bearer') continue;
+    // 401/404/403: this scheme didn't count as access. Try the other before giving up.
+    if (token && (res.status === 401 || res.status === 404 || res.status === 403) && scheme === 'Bearer') continue;
     return last;
   }
   return last;
 }
 
+async function githubLogin(token, scheme) {
+  if (!token) return '';
+  try {
+    const res = await fetch('https://api.github.com/user', { headers: githubHeaders(token, scheme) });
+    if (!res.ok) return '';
+    const body = await res.json().catch(() => ({}));
+    return body.login || '';
+  } catch {
+    return '';
+  }
+}
+
 async function fetchRepoContext(repo, token) {
   // Never log Authorization. A private repo without a working token looks like 404.
   const { res: meta, scheme } = await githubRepoMeta(repo, token);
-  if (meta.status === 401) {
-    throw new Error('That GitHub token was rejected. Check it and try again. We did not save it.');
-  }
-  if (meta.status === 404) {
-    throw new Error(token
-      ? 'GitHub still cannot see that private repo with this token. On the token: Repository access must include this repo, and Contents must be Read-only. If the repo is under an organization, click Enable SSO on the token. The URL must be github.com/owner/repo.'
-      : 'That repository is private or missing. Paste a GitHub token — we read the README once and never save the token.');
-  }
-  if (meta.status === 403) {
+  if (!meta.ok) {
     const body = await meta.json().catch(() => ({}));
-    const msg = String(body.message || '');
-    if (/SSO|organization/i.test(msg)) {
-      throw new Error('This token needs SSO authorization for the organization. Open GitHub → the token → Authorize (SSO), then try again.');
+    let login = '';
+    if (token && (meta.status === 404 || meta.status === 403)) {
+      login = await githubLogin(token, scheme || 'Bearer');
     }
-    throw new Error('GitHub refused the request (rate limit or permissions). Wait a few minutes, or give the token Contents: Read on that repo.');
+    throw new Error(githubRepoErrorMessage(meta.status, {
+      hasToken: !!token,
+      login: login,
+      githubMessage: body.message || ''
+    }));
   }
-  if (!meta.ok) throw new Error(`GitHub returned ${meta.status}.`);
   const info = await meta.json();
 
   const readmeRes = await fetch(
