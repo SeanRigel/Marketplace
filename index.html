@@ -79,6 +79,16 @@
   .join .msg.ok { color: #6ee7a8; }
   .join .msg.err { color: #ff9b8f; }
 
+  .agent-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .agent-split { grid-template-columns: 1fr; } }
+  .agent-card {
+    background: #fff; border: 1px solid var(--border); border-radius: var(--r);
+    padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .agent-card h3 { font-size: 18px; margin: 4px 0 0; }
+  .agent-card p { color: var(--ink-3); font-size: 14.5px; line-height: 1.5; margin: 0 0 8px; }
+  .agent-card .btn { align-self: flex-start; margin-top: auto; }
+
   /* ---------- listing modal ---------- */
   .modal { position: fixed; inset: 0; z-index: 100; background: rgba(20, 23, 28, .5); backdrop-filter: blur(3px); display: none; overflow-y: auto; padding: 28px 16px; }
   .modal.open { display: block; }
@@ -105,6 +115,54 @@
   .side h4 { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 7px; }
   .side .desc { font-size: 13.5px; color: var(--ink-2); white-space: pre-line; }
   .tags { display: flex; gap: 5px; flex-wrap: wrap; }
+
+  .hero-demo-ph {
+    min-height: 220px; padding: 28px 20px; display: grid; place-items: center;
+    text-align: center; color: var(--ink-3); font-size: 14px; line-height: 1.5;
+    background:
+      linear-gradient(180deg, #fbfcfd, #f3f5f8);
+  }
+  .hero-demo-ph[hidden] { display: none; }
+  .hero-demo-ph b { display: block; color: var(--ink); font-size: 15px; margin-bottom: 6px; }
+
+  /* Phones only — desktop hero/grid/join stay as they are. */
+  @media (max-width: 760px) {
+    .hero-in { gap: 22px; padding: 28px 0 24px; }
+    .hero h1 { font-size: 28px; max-width: none; }
+    .hero .lede { font-size: 15px; margin-top: 12px; }
+    .hero-cta { flex-direction: column; margin-top: 18px; }
+    .hero-cta .btn { width: 100%; height: 46px; }
+    .hero-stats {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px;
+      margin-top: 22px; padding-top: 18px;
+    }
+    .hero-demo iframe { height: 200px; }
+    .hero-demo-ph { min-height: 160px; padding: 22px 16px; }
+    .chrome .lights { display: none; }
+
+    section { padding: 36px 0; }
+    .sec-head { margin-bottom: 16px; }
+    .sec-head h2 { font-size: 20px; }
+    .sec-head .spacer { margin-left: 0; width: 100%; }
+
+    .cmp { -webkit-overflow-scrolling: touch; }
+    table { min-width: 520px; font-size: 13px; }
+    th, td { padding: 10px 12px; }
+
+    .join { padding: 26px 16px; border-radius: var(--r); text-align: left; }
+    .join h2 { font-size: 22px; }
+    .join > p { margin-left: 0; margin-right: 0; }
+    .roles { justify-content: flex-start; }
+    .join .row { flex-direction: column; }
+    .join .row .btn { width: 100%; }
+
+    .modal { padding: 0; }
+    .sheet { border-radius: 0; min-height: 100%; }
+    .sheet-head { padding: 14px 16px; }
+    .sheet-head h2 { font-size: 18px; }
+    .side { padding: 16px; }
+    .demo-frame { height: 280px; }
+  }
 </style>
 </head>
 <body>
@@ -114,9 +172,10 @@
     <a href="#top" class="brand"><span class="mark">F</span><span class="brand-text">Forkable</span></a>
     <div class="header-search">
       <span class="icon">⌕</span>
-      <input id="hsearch" type="search" placeholder="Search schedulers, dashboards, intake forms…" aria-label="Search tools">
+      <input id="hsearch" type="search" placeholder="Search agents, bots, schedulers…" aria-label="Search tools">
     </div>
     <nav class="header-nav">
+      <a href="#agents" class="hide-sm">Agents &amp; bots</a>
       <a href="#how" class="hide-sm">How it works</a>
       <a href="#compare" class="hide-sm">Why us</a>
       <a href="app.html#/browse">Browse</a>
@@ -132,7 +191,7 @@
       <h1>Buy tools you can use before you pay.</h1>
       <p class="lede">
         Solo builders and small agencies sell the operational tools they've already
-        shipped — schedulers, dashboards, intake forms, internal AI integrations — to
+        shipped — schedulers, dashboards, agent teams, trading bots, intake forms — to
         other builders who need the same thing for a client. Every listing is a running
         app you can click into right now.
       </p>
@@ -155,8 +214,14 @@
         <span class="badge badge-live"><span class="dot"></span>live</span>
       </div>
       <iframe id="hero-frame" title="Live demo preview" referrerpolicy="no-referrer"
-              sandbox="allow-scripts allow-forms allow-popups allow-modals"></iframe>
-      <div class="cap">Not a screenshot. That's a real tool running, seeded with demo data.</div>
+              sandbox="allow-scripts allow-forms allow-popups allow-modals" hidden></iframe>
+      <div class="hero-demo-ph" id="hero-ph">
+        <div>
+          <b>Live demos, timed free trials</b>
+          Open a tool below and tap Start free trial. One short session per day — then buy to keep using it.
+        </div>
+      </div>
+      <div class="cap">Not a screenshot. Every listing is a real tool you can click into.</div>
     </div>
   </div>
 </div>
@@ -172,6 +237,32 @@
     </div>
     <div class="cat-rail" id="cat-rail"></div>
     <div class="grid" id="listing-grid"></div>
+  </div>
+</section>
+
+<section id="agents">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <h2>Agent teams &amp; trading bots</h2>
+        <p>Same rules as everything else here: a live demo you can try, then a repo you can deploy. Not a prompt pack.</p>
+      </div>
+    </div>
+    <div class="agent-split">
+      <div class="agent-card">
+        <span class="eyebrow">● Crews that run</span>
+        <h3>Agent teams</h3>
+        <p>Multi-agent setups people actually operate — research, support, ops — with a demo you can click, not a zip of YAML. After purchase, the walkthrough names the model keys and how to stand the crew up on your host.</p>
+        <a class="btn btn-secondary" href="app.html#/browse?cat=ai_agents">Browse agent teams</a>
+      </div>
+      <div class="agent-card">
+        <span class="eyebrow">● Paper first</span>
+        <h3>Trading bots</h3>
+        <p>Crypto and stock bots listed as working software. The sandbox has to run on fake or paper data — never live money. Buyers get the repo plus a deploy walkthrough for exchange/API keys on <em>their</em> machine.</p>
+        <a class="btn btn-secondary" href="app.html#/browse?cat=trading_bots">Browse trading bots</a>
+      </div>
+    </div>
+    <p class="hint" style="margin-top:16px">Selling one? New listing → pick <b>Agent teams</b> or <b>Trading bots</b>. Same form, same review, same refund window.</p>
   </div>
 </section>
 
@@ -326,6 +417,7 @@
   var activeCat = '';
 
   var CATS = {
+    ai_agents: 'Agent teams', trading_bots: 'Trading bots',
     scheduling: 'Scheduling', dashboard: 'Dashboards', intake_form: 'Intake forms',
     payroll: 'Payroll', ai_integration: 'AI integrations', other: 'Other'
   };
@@ -369,10 +461,12 @@
       if (!live.length) return null;
       return live.map(function (l) {
         return {
-          id: l.id, title: l.title, category: l.category, priceCents: l.price_cents,
+          id: l.id, listingId: l.id, title: l.title, category: l.category, priceCents: l.price_cents,
           seller: { name: l.seller_name || 'A builder' },
           shortDescription: l.short_description, longDescription: l.long_description,
-          demo: l.demo_url, stack: l.tech_stack_tags || [],
+          has_demo: !!(l.has_demo || l.demo_url),
+          demo: null, // durable URL is not public — trial goes through startDemoSession
+          stack: l.tech_stack_tags || [],
           avgRating: l.avg_rating, reviewCount: l.review_count,
           deployMinutes: null, services: [],
           href: 'app.html#/listing/' + l.id
@@ -402,7 +496,7 @@
       var idx = LISTINGS.indexOf(l);
       return '<a class="card" href="#" data-i="' + idx + '" aria-label="Open ' + esc(l.title) + '">' +
         '<div class="cover" style="--h:' + hue(l.id || l.title) + '">' +
-          (l.demo ? '<span class="badge badge-live cover-badge"><span class="dot"></span>Live demo</span>' : '') +
+          (l.demo || l.has_demo ? '<span class="badge badge-live cover-badge"><span class="dot"></span>Live demo</span>' : '') +
           '<span class="monogram">' + esc(monogram(l.title)) + '</span>' +
           '<span class="cover-cat">' + esc(CATS[l.category] || l.category) + '</span>' +
         '</div>' +
@@ -435,15 +529,15 @@
   });
 
   /* ---------- hero demo ---------- */
-  /* Once real listings load, `demo` is seller-supplied and gets the same
-   * treatment as anywhere else — see the URL safety notes in app/db.js. */
+  /* Do NOT auto-start a trial on page load — that would burn the daily session
+   * before anyone clicked. The hero is a teaser; the modal starts the gate. */
   function paintHero() {
-    var first = LISTINGS.map(function (l) { return FKUrl.demoFrame(l.demo); })
-                        .filter(function (f) { return f.ok; })[0];
-    if (!first) return;
-    $('hero-addr').textContent = first.src;
-    $('hero-frame').setAttribute('sandbox', first.sandbox);
-    $('hero-frame').src = first.src;
+    var first = LISTINGS[0];
+    $('hero-addr').textContent = first ? 'Try a live demo below' : 'live sandbox';
+    var frame = $('hero-frame');
+    var ph = $('hero-ph');
+    if (frame) { frame.hidden = true; frame.src = 'about:blank'; }
+    if (ph) ph.hidden = false;
   }
 
   /* ---------- modal ---------- */
@@ -455,13 +549,11 @@
     lastFocus = document.activeElement;
     $('m-title').textContent = l.title;
     $('m-pills').innerHTML =
-      (l.demo ? '<span class="badge badge-live"><span class="dot"></span>Live demo</span>' : '') +
+      (l.demo || l.has_demo ? '<span class="badge badge-live"><span class="dot"></span>Live demo</span>' : '') +
       '<span class="badge">' + esc(CATS[l.category] || l.category) + '</span>' +
       '<span class="badge">by ' + esc(l.seller.name) + '</span>';
-    var df = FKUrl.demoFrame(l.demo);
-    $('m-url').textContent = df.ok ? df.src : '—';
-    $('m-note').innerHTML = 'Real running instance with demo data. ' +
-      (df.ok ? '<a href="' + esc(df.src) + '" target="_blank" rel="noopener">Open in a new tab ↗</a>' : '');
+    $('m-url').textContent = 'Starting free trial…';
+    $('m-note').textContent = 'One timed free trial per day. Buy to keep using it.';
     $('m-price').textContent = money(l.priceCents);
     $('m-deploy').textContent = l.deployMinutes ? '~' + l.deployMinutes + ' min' : 'see listing';
     $('m-services').textContent = (l.services || []).join(', ') || 'see listing';
@@ -472,11 +564,39 @@
     }).join('');
     $('m-buy').setAttribute('href', l.href || '#join');
     $('m-buy').textContent = l.href ? 'View full listing →' : 'Buy — early access';
-    frame.setAttribute('sandbox', df.sandbox);
-    frame.src = df.ok ? df.src : 'about:blank';
+    frame.src = 'about:blank';
     modal.classList.add('open');
     document.body.style.overflow = 'hidden';
     $('m-close').focus();
+
+    if (!(l.demo || l.has_demo || l.id)) return;
+    var opts = l.listingId
+      ? { listingId: l.listingId }
+      : { featuredId: l.id };
+    DB.startDemoSession(opts).then(function (session) {
+      var launch = FKUrl.safeLaunch(session && session.launch_url);
+      if (!launch) {
+        $('m-url').textContent = 'Demo locked';
+        $('m-note').textContent = 'The demo session did not return a safe link.';
+        return;
+      }
+      // No allow-same-origin: first-party /demos/* share this origin. Scripts
+      // plus same-origin would let a demo read the marketplace login.
+      frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups allow-modals allow-downloads');
+      frame.src = launch;
+      $('m-url').textContent = session.unlimited
+        ? 'live sandbox · unlocked'
+        : 'live sandbox · trial';
+      $('m-note').innerHTML = (session.unlimited
+        ? 'Unlocked access. '
+        : 'Timed free trial — one session per day. ') +
+        '<a href="' + esc(launch) + '" target="_blank" rel="noopener">Open in a new tab ↗</a>';
+    }).catch(function (err) {
+      $('m-url').textContent = 'Demo locked';
+      $('m-note').textContent = (err && err.message) ||
+        "Today's free trial is used up. Come back tomorrow, or buy the tool.";
+      frame.src = 'about:blank';
+    });
   }
 
   function closeModal() {
@@ -549,20 +669,25 @@
       return;
     }
 
-    fetch(CFG.supabaseUrl.replace(/\/$/, '') + '/rest/v1/waitlist', {
+    fetch('/api/waitlist', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: CFG.supabaseAnonKey,
-        Authorization: 'Bearer ' + CFG.supabaseAnonKey,
-        Prefer: 'return=minimal'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: row.email, role: row.role, note: row.note })
     }).then(function (res) {
-      submit.disabled = false;
-      if (res.ok) { $('wl-form').reset(); say("You're on the list. We'll email you when your side opens.", 'ok'); }
-      else if (res.status === 409) say("You're already on the list.", 'ok');
-      else { saveLocal(row); say("Couldn't reach the server — saved locally, try again later.", 'err'); }
+      return res.json().catch(function () { return {}; }).then(function (j) {
+        submit.disabled = false;
+        if (res.ok) {
+          $('wl-form').reset();
+          say(j.already
+            ? "You're already on the list."
+            : "You're on the list. We'll email you when your side opens.", 'ok');
+        } else if (res.status === 429) {
+          say((j && j.error) || 'Too many tries. Wait a bit and try again.', 'err');
+        } else {
+          saveLocal(row);
+          say("Couldn't reach the server — saved locally, try again later.", 'err');
+        }
+      });
     }).catch(function () {
       submit.disabled = false;
       saveLocal(row);

@@ -310,7 +310,7 @@ function localParse(text){
 // ---------- render: AI extras (pairs, shift limits, flags) ----------
 function renderExtras(){
   const eb=document.getElementById('extras-box');let html='';
-  if(pairs.length)html+='<div style="margin-bottom:8px;">'+pairs.map(p=>'<span class="pair-rule">⊘ '+p[0].split(' ')[0]+' &amp; '+p[1].split(' ')[0]+' — never the same shift</span>').join('')+'</div>';
+  if(pairs.length)html+='<div style="margin-bottom:8px;">'+pairs.map(p=>'<span class="pair-rule">⊘ '+esc(p[0].split(' ')[0])+' &amp; '+esc(p[1].split(' ')[0])+' — never the same shift</span>').join('')+'</div>';
   eb.innerHTML=html;
   document.getElementById('flags-box').innerHTML=flags.length?'<div class="alert alert-warn" style="margin-top:12px;">'+flags.map(esc).join('<br>')+'</div>':'';
 }

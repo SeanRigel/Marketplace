@@ -107,6 +107,26 @@ const BLOCKED_NAMES = new Set([
 
 const BLOCKED_SUFFIXES = ['.localhost', '.local', '.internal', '.home.arpa'];
 
+/** IPv4 integer hidden inside IPv4-mapped / IPv4-compatible IPv6, or null. */
+function ipv4FromMappedIPv6(h) {
+  const dotted = h.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (dotted) return parseIPv4(dotted[1]);
+
+  const hexMapped = h.match(/(?:^|:)ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  if (hexMapped) {
+    return ((parseInt(hexMapped[1], 16) << 16) + parseInt(hexMapped[2], 16)) >>> 0;
+  }
+
+  // IPv4-compatible ::7f00:1 (obsolete form, still parsed by some stacks).
+  if (h.startsWith('::') && !/:ffff:/i.test(h)) {
+    const g = h.replace(/^::/, '').split(':').filter(Boolean);
+    if (g.length === 2 && g.every((x) => /^[0-9a-f]{1,4}$/.test(x))) {
+      return ((parseInt(g[0], 16) << 16) + parseInt(g[1], 16)) >>> 0;
+    }
+  }
+  return null;
+}
+
 /**
  * True when this hostname must not be fetched. Accepts a hostname as `new URL()`
  * reports it (IPv6 still wrapped in brackets is fine).
@@ -130,21 +150,9 @@ export function isPrivateHost(hostname) {
     if (/^f[cd]/.test(h)) return true;      // fc00::/7 unique-local
     if (/^ff/.test(h)) return true;         // ff00::/8 multicast
 
-    // ::ffff:127.0.0.1 and friends — test the embedded IPv4.
-    const embedded = h.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-    if (embedded) {
-      const v = parseIPv4(embedded[1]);
-      if (v !== null && v4InBlockedRange(v)) return true;
-    }
-    // ::ffff:7f00:1 — same address, written as hex groups.
-    const groups = h.split(':').filter(Boolean);
-    if (groups.length >= 2 && /^(ffff|0)$/.test(groups[groups.length - 2] || '')) {
-      const tail = groups.slice(-2).join('');
-      if (/^[0-9a-f]{1,8}$/.test(tail)) {
-        const v = parseInt(groups.slice(-2).join('').padStart(8, '0'), 16);
-        if (Number.isSafeInteger(v) && v4InBlockedRange(v)) return true;
-      }
-    }
+    // ::ffff:127.0.0.1 and ::ffff:7f00:1 — test the embedded IPv4, dotted or hex.
+    const mapped = ipv4FromMappedIPv6(h);
+    if (mapped !== null && v4InBlockedRange(mapped)) return true;
     return false;
   }
 

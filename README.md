@@ -36,8 +36,10 @@ supabase/changelog.sql  listing_updates + the "maintained?" summary view
 supabase/licenses_and_requests.sql
 supabase/import_quota.sql
 supabase/moderation.sql
-                        license tiers + the request board
-demos/                  three real working apps, served as Phase 1 sandbox demos
+supabase/demo_gate.sql  timed daily demo trials; hides demo_url like repo_url
+supabase/security_hardening.sql  waitlist server-only writes + API rate limits
+supabase/deploy_guide.sql  post-purchase AI walkthrough cache + spend cap
+demos/                  three real working apps — only via the demo trial gate
 ```
 
 ### License tiers

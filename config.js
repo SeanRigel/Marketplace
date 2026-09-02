@@ -44,8 +44,10 @@ window.FORKABLE_CONFIG = {
  * this same site (demos/). That is the point of the page: nobody else in this
  * market lets you use the thing before you pay.
  *
- * `demo` is a URL. `repoUrl` is deliberately absent — repo access is a
- * post-purchase artifact and does not belong in client-side config.
+ * `demo` is the first-party path used only by local-mode seeding and by the
+ * server-side featured allowlist (functions/_shared/featured-demos.js). The
+ * landing page never loads it directly — trials go through /api/demo-session.
+ * `repoUrl` is deliberately absent — repo access is post-purchase.
  */
 window.FORKABLE_LISTINGS = [
   {
@@ -59,6 +61,7 @@ window.FORKABLE_LISTINGS = [
     longDescription:
       'Built for a real lifeguard pool rotation and generalizes to any shift-based team — restaurants, retail, clinics, camps.\n\nThe part worth buying is the split: the AI only ever *parses* messy human text into structured constraints (days off, max shifts, "these two can\'t close together"). The schedule itself is built by a deterministic solver, so it is reproducible and never hallucinates a shift. Every constraint stays hand-editable on the calendar before you solve.\n\nDegrades safely: if the AI endpoint is unreachable it falls back to a built-in text reader, so the tool never hard-fails in front of your client.',
     demo: 'demos/guard-scheduler/index.html',
+    has_demo: true,
     demoNote: 'Full app. Try "Read the texts" with the seeded sample chat, then tap cells to edit and solve.',
     stack: ['Vanilla JS', 'Claude Haiku', 'Python/Vercel fn', 'CSV export'],
     deployMinutes: 25,
@@ -75,6 +78,7 @@ window.FORKABLE_LISTINGS = [
     longDescription:
       'A prospecting tool for anyone who sells websites, booking systems, or dashboards to local businesses.\n\nQueries the Overpass API across several mirrors with automatic failover, filters for businesses missing a `website` tag, and gives you a working call list with phone numbers and map links. Because it runs on OpenStreetMap rather than a paid places API, there is no key to rotate, no per-query billing, and no quota to blow through on a bad afternoon.\n\nShips as an installable PWA, so it works from a phone while you are actually driving the territory.',
     demo: 'demos/lead-scout/index.html',
+    has_demo: true,
     demoNote: 'Live against the real Overpass API. Search any town you like — the results are genuine.',
     stack: ['Vanilla JS', 'Overpass/OSM', 'Nominatim', 'PWA'],
     deployMinutes: 10,
@@ -91,6 +95,7 @@ window.FORKABLE_LISTINGS = [
     longDescription:
       'A single-file investigation console for the legal end of OSINT — domain recon, DNS-over-HTTPS lookups, RDAP registration records, IP geolocation, EXIF metadata extraction from an image, and a cipher workbench.\n\nEvery module executes client-side against public endpoints, which means there is no backend to run, no logs to store, and nothing to leak. Drop it on a static host and it is done.\n\nThe reason to buy it rather than build it: the interface. It reads like a real console, which is disproportionately what sells this category of tool to a client.',
     demo: 'demos/reconsole/index.html',
+    has_demo: true,
     demoNote: 'Every live module works against real public endpoints. Try a domain lookup.',
     stack: ['Vanilla JS', 'DNS-over-HTTPS', 'RDAP', 'exifr'],
     deployMinutes: 5,

@@ -13,6 +13,7 @@
 import { json, fail, requireEnv, failSetup } from '../_shared/http.js';
 import { requireUser } from '../_shared/supabase.js';
 import { vetUrl, safeFetch, isPrivateHost } from '../_shared/net-safety.js';
+import { overLimit } from '../_shared/rate-limit.js';
 
 const TIMEOUT_MS = 10000;
 
@@ -29,6 +30,10 @@ export async function onRequestPost({ request, env }) {
 
   const { error } = await requireUser(request, env);
   if (error) return fail(error, 401);
+
+  if (await overLimit(request, env, 'check-demo', 30, 3600)) {
+    return fail('Too many demo checks from here. Try again later.', 429);
+  }
 
   const body = await request.json().catch(() => ({}));
   if (!body.url) return fail('url is required.');
@@ -48,16 +53,15 @@ export async function onRequestPost({ request, env }) {
       headers: { 'User-Agent': 'Forkable-DemoCheck/1.0 (+listing health check)' }
     });
     const latency = Date.now() - started;
-
-    // Read a small slice to sanity-check it's a page, not an error blob or a file.
-    const text = await res.text().catch(() => '');
-    const looksLikeHtml = /<html|<!doctype html|<body/i.test(text.slice(0, 2000));
+    // Do not read the body. Status is enough to tell the seller the URL
+    // answers, and pulling the whole response would let this route be used
+    // as a proxy/oracle (and as a way to dump a huge file into the worker).
 
     return json({
       ok: res.status >= 200 && res.status < 400,
       status: res.status,
       latency_ms: latency,
-      looks_like_html: looksLikeHtml,
+      looks_like_html: null,
       error: res.status >= 400 ? `The server answered ${res.status}.` : null
     });
   } catch (e) {

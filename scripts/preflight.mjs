@@ -151,7 +151,8 @@ if (!supabaseUp) console.log('  \x1b[2mSkipping schema and security checks — n
 for (const t of supabaseUp
   ? ['waitlist', 'profiles', 'listings', 'purchases', 'reviews',
      'sandbox_instances', 'platform_settings', 'listing_updates',
-     'requests', 'request_responses', 'import_usage']
+     'requests', 'request_responses', 'import_usage', 'demo_sessions',
+     'deploy_guide_usage', 'deploy_guides']
   : []) {
   const r = await sb(`/${t}?select=*&limit=1`, { key: env.SUPABASE_SERVICE_ROLE_KEY });
   if (r.status === 404 || r.json?.code === '42P01') bad(`Table "${t}" missing`, 'Run the SQL files in supabase/ in order.');
@@ -207,6 +208,32 @@ if (repoLeak.ok && Array.isArray(repoLeak.json)) {
   ok('repo_url is not publicly readable', `anon got ${repoLeak.status}`);
 }
 
+const demoLeak = await sb('/listings?select=demo_url&limit=1');
+if (demoLeak.ok && Array.isArray(demoLeak.json)) {
+  bad('PUBLIC CAN READ demo_url',
+      'Demo URLs must be trial-gated, not world-readable. Run supabase/demo_gate.sql\n' +
+      '      (or ' + colFix('listings', "'repo_url', 'demo_url'") + ').');
+} else {
+  ok('demo_url is not publicly readable', `anon got ${demoLeak.status}`);
+}
+
+const demoClaim = await sb('/rpc/claim_demo_session', {
+  method: 'POST',
+  body: {
+    p_demo_key: 'preflight-probe',
+    p_visitor_key: 'preflight',
+    p_unlimited: false
+  },
+  key: env.SUPABASE_SERVICE_ROLE_KEY
+});
+if (demoClaim.status === 404 || demoClaim.json?.code === '42883') {
+  bad('Demo trial gate is NOT installed',
+      'Without claim_demo_session, /api/demo-session cannot mint trials and /demos/*\n' +
+      '      cannot be enforced. Run supabase/demo_gate.sql.');
+} else {
+  ok('Demo trial gate is installed', 'claim_demo_session responded');
+}
+
 /* The one route that spends real money on every call. A cap that is not installed
  * is not a cap, and this is the failure mode where you find out from a bill. */
 if (env.ANTHROPIC_API_KEY) {
@@ -225,6 +252,16 @@ if (env.ANTHROPIC_API_KEY) {
   meh('ANTHROPIC_API_KEY is set',
       'The daily cap bounds CALLS, not dollars. Set a hard spend cap in the Anthropic\n' +
       '      console as well — a cap in one place only is how a key gets drained.');
+  const dgQuota = await sb('/rpc/claim_deploy_guide_quota', {
+    method: 'POST', body: { p_user: '00000000-0000-4000-8000-000000000000' },
+    key: env.SUPABASE_SERVICE_ROLE_KEY
+  });
+  if (dgQuota.status === 404 || dgQuota.json?.code === '42883') {
+    bad('ANTHROPIC_API_KEY is set but the deploy-guide spend cap is NOT installed',
+        'Buyers can loop /api/deploy-guide and drain the key. Run supabase/deploy_guide.sql.');
+  } else {
+    ok('Deploy-guide spend cap is installed', 'claim_deploy_guide_quota responded');
+  }
 } else {
   ok('ANTHROPIC_API_KEY unset', 'Auto-draft is off; nothing can spend on the model.');
 }

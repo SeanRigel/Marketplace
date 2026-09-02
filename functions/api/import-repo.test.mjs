@@ -6,7 +6,7 @@
  *
  *   node functions/api/import-repo.test.mjs
  */
-import { parseRepoUrl } from './import-repo.js';
+import { parseRepoUrl, parseGithubToken } from './import-repo.js';
 
 let pass = 0, fail = 0;
 const eq = (name, actual, expected) => {
@@ -42,6 +42,16 @@ for (const [name, input] of [
   ['not a URL',            'just some words'],
   ['path traversal',       'https://github.com/../../etc/passwd'],
 ]) eq(name, parseRepoUrl(input), null);
+
+console.log('\nGitHub tokens (shape only — never a real key):');
+eq('classic prefix', parseGithubToken('ghp_' + 'a'.repeat(36)) ? 'ok' : null, 'ok');
+eq('fine-grained prefix', parseGithubToken('github_pat_' + 'a'.repeat(40)) ? 'ok' : null, 'ok');
+eq('empty is optional', parseGithubToken(''), null);
+eq('strips Bearer prefix', parseGithubToken('Bearer ghp_' + 'b'.repeat(36)) ? 'ok' : null, 'ok');
+eq('strips whitespace', parseGithubToken('  ghp_' + 'c'.repeat(36) + '  ') ? 'ok' : null, 'ok');
+eq('whitespace only', parseGithubToken('   '), null);
+eq('random string', parseGithubToken('sk-ant-not-github'), null);
+eq('too short', parseGithubToken('ghp_short'), null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

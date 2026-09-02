@@ -4,9 +4,9 @@
  * fifteen minutes of typing, and supply-side friction is what kills marketplaces
  * — this turns it into about a minute of editing.
  *
- * Reads the repo's README and package manifest through GitHub's public API, then
- * asks Claude to draft the listing fields. The seller edits and saves; nothing is
- * published automatically, and the model never sees anything the public can't.
+ * Private repos are the point of selling: the demo is public, the code is not.
+ * The seller may send a GitHub token in this one request so we can read the
+ * README. We never write that token to a database, a log, or the draft.
  *
  * Uses raw fetch rather than the Anthropic SDK for the same reason as Stripe:
  * the SDK needs a bundler and this project has no build step.
@@ -30,8 +30,8 @@ const LISTING_SCHEMA = {
     long_description: { type: 'string', description: 'Two or three short paragraphs: what it does, who it is for, why buying beats rebuilding.' },
     category: {
       type: 'string',
-      enum: ['scheduling', 'dashboard', 'intake_form', 'payroll', 'ai_integration', 'other'],
-      description: 'Best fit. Use "other" rather than forcing a bad match.'
+      enum: ['ai_agents', 'trading_bots', 'scheduling', 'dashboard', 'intake_form', 'payroll', 'ai_integration', 'other'],
+      description: 'Best fit. Use ai_agents for multi-agent crews, trading_bots for crypto/stock bots. Use "other" rather than forcing a bad match.'
     },
     tech_stack_tags: {
       type: 'array',
@@ -87,7 +87,29 @@ export async function onRequestPost({ request, env }) {
   const repo = parseRepoUrl(body.repo_url || '');
   if (!repo) return fail('That does not look like a GitHub repository URL.', 400);
 
-  // Spend cap, claimed before any paid call and before we even talk to GitHub.
+  let token = null;
+  if (body.github_token) {
+    token = parseGithubToken(body.github_token);
+    if (!token) {
+      return fail(
+        'That does not look like a GitHub token. Create one at GitHub → Settings → Developer settings → Personal access tokens. We use it once and never save it.',
+        400
+      );
+    }
+  }
+
+  let source;
+  try {
+    source = await fetchRepoContext(repo, token);
+  } catch (e) {
+    return fail(e.message, 502);
+  }
+  if (!source.readme) {
+    return fail('That repository has no README we can read, so there is nothing to draft from.', 422);
+  }
+
+  // Spend cap AFTER GitHub succeeds. A bad token or private-repo miss must not
+  // burn a Claude slot — that call is the one that costs money.
   //
   // "Requires a signed-in user" is not a spend limit when signup is free: one
   // account can loop this, and several accounts can each sit politely under a
@@ -116,16 +138,6 @@ export async function onRequestPost({ request, env }) {
     // the one route that spends real money, which is how a key gets drained.
     console.error('[import-repo] quota check failed: ' + (e && e.message ? e.message : e));
     return fail('Could not verify your daily draft limit. Try again shortly.', 503);
-  }
-
-  let source;
-  try {
-    source = await fetchRepoContext(repo);
-  } catch (e) {
-    return fail(e.message, 502);
-  }
-  if (!source.readme) {
-    return fail('That repository has no README we can read, so there is nothing to draft from.', 422);
   }
 
   const controller = new AbortController();
@@ -250,23 +262,69 @@ export function parseRepoUrl(raw) {
   return { owner, name };
 }
 
-async function fetchRepoContext(repo) {
+/* Classic (ghp_) or fine-grained (github_pat_) personal access tokens.
+ * Reject anything else so we never send a random secret to GitHub. */
+export function parseGithubToken(raw) {
+  if (raw == null) return null;
+  let s = String(raw).replace(/^\uFEFF/, '').trim();
+  s = s.replace(/^(Bearer|token)\s+/i, '');
+  s = s.replace(/\s+/g, '');
+  if (!s) return null;
+  if (s.length < 20 || s.length > 400) return null;
+  if (!/^(ghp_|github_pat_|gho_|ghu_|ghs_)[A-Za-z0-9_.=+-]+$/.test(s)) return null;
+  return s;
+}
+
+function githubHeaders(token, scheme) {
   const headers = {
     Accept: 'application/vnd.github+json',
-    'User-Agent': 'Forkable-Importer/1.0'
+    'User-Agent': 'Forkable-Importer/1.0',
+    'X-GitHub-Api-Version': '2022-11-28'
   };
+  if (token) headers.Authorization = (scheme === 'token' ? 'token ' : 'Bearer ') + token;
+  return headers;
+}
 
-  // Unauthenticated GitHub API: 60 requests/hour per IP. Two calls per import,
-  // so ~30 imports an hour across all users before it starts 403ing.
-  const meta = await fetch(`https://api.github.com/repos/${repo.owner}/${repo.name}`, { headers });
-  if (meta.status === 404) throw new Error('That repository does not exist, or it is private.');
-  if (meta.status === 403) throw new Error('GitHub rate-limited us. Wait a few minutes and try again.');
+async function githubRepoMeta(repo, token) {
+  const url = `https://api.github.com/repos/${repo.owner}/${repo.name}`;
+  const schemes = token ? ['Bearer', 'token'] : [null];
+  let last = null;
+  for (const scheme of schemes) {
+    const res = await fetch(url, { headers: githubHeaders(token, scheme) });
+    last = { res, scheme };
+    if (res.ok) return last;
+    // 401/404: this scheme didn't count as access. Try the other before giving up.
+    if (token && (res.status === 401 || res.status === 404) && scheme === 'Bearer') continue;
+    return last;
+  }
+  return last;
+}
+
+async function fetchRepoContext(repo, token) {
+  // Never log Authorization. A private repo without a working token looks like 404.
+  const { res: meta, scheme } = await githubRepoMeta(repo, token);
+  if (meta.status === 401) {
+    throw new Error('That GitHub token was rejected. Check it and try again. We did not save it.');
+  }
+  if (meta.status === 404) {
+    throw new Error(token
+      ? 'GitHub still cannot see that private repo with this token. On the token: Repository access must include this repo, and Contents must be Read-only. If the repo is under an organization, click Enable SSO on the token. The URL must be github.com/owner/repo.'
+      : 'That repository is private or missing. Paste a GitHub token — we read the README once and never save the token.');
+  }
+  if (meta.status === 403) {
+    const body = await meta.json().catch(() => ({}));
+    const msg = String(body.message || '');
+    if (/SSO|organization/i.test(msg)) {
+      throw new Error('This token needs SSO authorization for the organization. Open GitHub → the token → Authorize (SSO), then try again.');
+    }
+    throw new Error('GitHub refused the request (rate limit or permissions). Wait a few minutes, or give the token Contents: Read on that repo.');
+  }
   if (!meta.ok) throw new Error(`GitHub returned ${meta.status}.`);
   const info = await meta.json();
 
   const readmeRes = await fetch(
     `https://api.github.com/repos/${repo.owner}/${repo.name}/readme`,
-    { headers: { ...headers, Accept: 'application/vnd.github.raw' } }
+    { headers: { ...githubHeaders(token, scheme || 'Bearer'), Accept: 'application/vnd.github.raw' } }
   );
   const readme = readmeRes.ok ? (await readmeRes.text()).slice(0, MAX_README_CHARS) : '';
 

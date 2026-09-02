@@ -56,9 +56,17 @@ wait for it.** Go straight to Phase 2.
       6. `supabase/licenses_and_requests.sql`
       7. `supabase/import_quota.sql`
       8. `supabase/moderation.sql`
+      9. `supabase/demo_gate.sql`
+     10. `supabase/security_hardening.sql`
+     11. `supabase/deploy_guide.sql`
+     12. `supabase/agent_categories.sql`
 
       ⚠️ Don't skip #4. It fixes a security hole that would let strangers see your
       unfinished draft listings.
+
+      ⚠️ Don't skip #9. Without it, demos are infinite free use — anyone can
+      bookmark `/demos/...` forever. That file hides `demo_url`, adds the timed
+      daily trial, and is required for `/api/demo-session` to work.
 
 - [ ] 6. In the left menu click **Settings** (the gear) → **API**. You need three
       things off this page:

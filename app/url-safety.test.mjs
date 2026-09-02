@@ -52,6 +52,10 @@ for (const bad of [
 }
 
 ok('empty is not a URL', U.safeUrl('') === null && U.safeUrl(null) === null);
+ok('safeLaunch allows demo-launch path', U.safeLaunch('/api/demo-launch?sid=abc') === '/api/demo-launch?sid=abc');
+ok('safeLaunch rejects javascript', U.safeLaunch('javascript:alert(1)') === '');
+ok('safeLaunch rejects data', U.safeLaunch('data:text/html,x') === '');
+ok('safeLaunch allows https', U.safeLaunch('https://example.com/demo').startsWith('https://example.com/'));
 
 /* ---- scheme: the good cases still work -------------------------------- */
 ok('https passes', U.safeHref('https://github.com/rigel/tool') === 'https://github.com/rigel/tool');

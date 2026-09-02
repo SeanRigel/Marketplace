@@ -64,7 +64,7 @@ export async function onRequestPost({ request, env }) {
         headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
         body: {
           listing_id: listing.id,
-          url: listing.demo_url,
+          url: null,
           // One failed check is "still live, but noted"; sustained failure is an error.
           status: check.ok ? 'live' : (failures >= FAILURES_BEFORE_ERROR ? 'error' : 'live'),
           http_status: check.status,

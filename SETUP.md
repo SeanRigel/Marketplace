@@ -33,6 +33,10 @@ if the public can read `repo_url` or mint their own purchases.
    - `supabase/licenses_and_requests.sql`
    - `supabase/import_quota.sql`
    - `supabase/moderation.sql`
+   - `supabase/demo_gate.sql` — timed daily demo trials; hides `demo_url`
+   - `supabase/security_hardening.sql` — waitlist server-only + API rate limits
+   - `supabase/deploy_guide.sql` — post-purchase AI walkthrough cache + spend cap
+   - `supabase/agent_categories.sql` — Agent teams + Trading bots categories
 
    ⚠️ **The fourth file is not optional.** Besides reviews and demo health, it fixes a
    security hole: views created without `security_invoker = on` run with the view

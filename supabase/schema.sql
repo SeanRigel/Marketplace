@@ -7,7 +7,7 @@
 -- ---------------------------------------------------------------- enums
 do $$ begin
   create type user_role         as enum ('seller', 'buyer', 'both');
-  create type listing_category  as enum ('scheduling','dashboard','intake_form','payroll','ai_integration','other');
+  create type listing_category  as enum ('ai_agents','trading_bots','scheduling','dashboard','intake_form','payroll','ai_integration','other');
   create type listing_status    as enum ('draft','pending_review','live','delisted');
   create type purchase_status   as enum ('pending','complete','refunded','disputed');
   create type sandbox_status    as enum ('provisioning','live','expired','error');

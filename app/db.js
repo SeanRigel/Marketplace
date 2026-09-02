@@ -6,9 +6,9 @@
  * is clickable before the project exists.
  *
  * The local backend deliberately mirrors the RLS rules in supabase/schema.sql —
- * drafts are owner-only, repo_url is withheld unless you own or bought the listing.
- * If you change a policy there, change the matching guard here or the two modes
- * will disagree about what a user can see.
+ * drafts are owner-only, repo_url and demo_url are withheld unless you own or
+ * bought the listing. If you change a policy there, change the matching guard
+ * here or the two modes will disagree about what a user can see.
  */
 (function () {
   'use strict';
@@ -17,7 +17,7 @@
   var LIVE = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
   var SESSION_KEY = 'forkable_session';
 
-  var CATEGORIES = ['scheduling', 'dashboard', 'intake_form', 'payroll', 'ai_integration', 'other'];
+  var CATEGORIES = ['ai_agents', 'trading_bots', 'scheduling', 'dashboard', 'intake_form', 'payroll', 'ai_integration', 'other'];
   var STATUSES = ['draft', 'pending_review', 'live', 'delisted'];
 
   function nowISO() { return new Date().toISOString(); }
@@ -41,7 +41,8 @@
       health: 'forkable_local_health',
       updates: 'forkable_local_updates',
       requests: 'forkable_local_requests',
-      responses: 'forkable_local_responses'
+      responses: 'forkable_local_responses',
+      demoSessions: 'forkable_local_demo_sessions'
     };
 
     function read(k) {
@@ -91,6 +92,7 @@
           // Root-relative: index.html and app.html both live at the repo root.
           // '../' happened to work only because browsers clamp it there.
           demo_url: l.demo,
+          has_demo: !!(l.demo),
           setup_instructions: '## Setup\n\n1. Clone the template repo.\n2. Copy `.env.example` to `.env`.\n3. Deploy to any static host.\n\nEstimated time: ~' + l.deployMinutes + ' minutes.',
           tech_stack_tags: l.stack, status: 'live',
           created_at: nowISO(), updated_at: nowISO()
@@ -106,7 +108,7 @@
       return { id: u.id, display_name: u.display_name, role: u.role, bio: u.bio, created_at: u.created_at };
     }
 
-    /* Mirrors listing_repo_url(): seller or completed buyer only. */
+    /* Mirrors listing_repo_url() / listing_demo_url(): seller or completed buyer only. */
     function canSeeRepo(listing) {
       var me = uid();
       if (!me) return false;
@@ -114,6 +116,74 @@
       return read(K.purchases).some(function (p) {
         return p.listing_id === listing.id && p.buyer_id === me && p.status === 'complete';
       });
+    }
+    var canSeeDemo = canSeeRepo;
+
+    function utcDay() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    /* Local mirror of claim_demo_session — one timed trial per demo_key per visitor per day. */
+    function claimLocalDemoSession(demoKey, unlimited) {
+      var me = uid();
+      var visitor = me ? ('user:' + me) : ('anon:' + (localStorage.getItem('forkable_anon_id') || (function () {
+        var id = uuid();
+        localStorage.setItem('forkable_anon_id', id);
+        return id;
+      })()));
+      var day = utcDay();
+      var rows = read(K.demoSessions);
+      var existing = rows.filter(function (r) {
+        return r.demo_key === demoKey && r.visitor_key === visitor && r.day === day;
+      })[0];
+      var minutes = 30;
+      var now = Date.now();
+
+      if (unlimited) {
+        var expU = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+        if (!existing) {
+          existing = { id: uuid(), demo_key: demoKey, visitor_key: visitor, day: day,
+            expires_at: expU, unlimited: true };
+          rows.push(existing);
+        } else {
+          existing.expires_at = expU;
+          existing.unlimited = true;
+        }
+        write(K.demoSessions, rows);
+        return { ok: true, allowed: true, session_id: existing.id, expires_at: existing.expires_at,
+          unlimited: true };
+      }
+
+      if (existing && new Date(existing.expires_at).getTime() > now) {
+        return { ok: true, allowed: true, session_id: existing.id, expires_at: existing.expires_at,
+          unlimited: !!existing.unlimited };
+      }
+      if (existing) {
+        return { ok: false, allowed: false, reason: 'exhausted' };
+      }
+
+      var exp = new Date(now + minutes * 60 * 1000).toISOString();
+      existing = { id: uuid(), demo_key: demoKey, visitor_key: visitor, day: day,
+        expires_at: exp, unlimited: false };
+      rows.push(existing);
+      write(K.demoSessions, rows);
+      return { ok: true, allowed: true, session_id: existing.id, expires_at: existing.expires_at,
+        unlimited: false };
+    }
+
+    function resolveLocalDemoTarget(opts) {
+      opts = opts || {};
+      if (opts.featuredId) {
+        var feat = (window.FORKABLE_LISTINGS || []).filter(function (l) {
+          return l.id === opts.featuredId;
+        })[0];
+        return feat && feat.demo ? feat.demo : null;
+      }
+      if (opts.listingId) {
+        var listing = read(K.listings).filter(function (l) { return l.id === opts.listingId; })[0];
+        return listing && listing.demo_url ? listing.demo_url : null;
+      }
+      return null;
     }
 
     /* Mirrors listing_ratings: every review hangs off a purchase, so a rating
@@ -152,7 +222,11 @@
       out.last_update_at = ups.length ? ups[0].created_at : null;
       out.latest_version = (ups.filter(function (u) { return u.version; })[0] || {}).version || null;
 
+      out.has_demo = !!(l.has_demo || (l.demo_url && String(l.demo_url).trim()));
       if (!canSeeRepo(l)) delete out.repo_url;
+      // demo_url is the same class of secret as repo_url — trials go through
+      // startDemoSession(), not a public durable link.
+      if (!canSeeDemo(l)) delete out.demo_url;
       return out;
     }
 
@@ -293,6 +367,7 @@
         var row = Object.assign({
           id: uuid(), seller_id: me, created_at: nowISO(), updated_at: nowISO()
         }, data);
+        row.has_demo = !!(row.demo_url && String(row.demo_url).trim());
         var bad = this._checkListing(row);
         if (bad) return Promise.reject(new Error(bad));
         rows.push(row);
@@ -307,9 +382,15 @@
           if (l.id !== id || l.seller_id !== me) return;   // matches the update policy
           // Validate the row as it WOULD be, before committing anything.
           var candidate = Object.assign({}, l, patch);
+          if (Object.prototype.hasOwnProperty.call(patch, 'demo_url')) {
+            candidate.has_demo = !!(candidate.demo_url && String(candidate.demo_url).trim());
+          }
           bad = self._checkListing(candidate);
           if (bad) return;
           Object.assign(l, patch, { updated_at: nowISO() });
+          if (Object.prototype.hasOwnProperty.call(patch, 'demo_url')) {
+            l.has_demo = !!(l.demo_url && String(l.demo_url).trim());
+          }
           found = l;
         });
         if (bad) return Promise.reject(new Error(bad));
@@ -574,6 +655,54 @@
         ));
       },
 
+      /* Local stand-in for /api/deploy-guide — no model call. Still requires a
+       * completed purchase (or being the seller), matching the live gate. */
+      deployGuide: function (listingId, host) {
+        var me = uid();
+        if (!me) return Promise.reject(new Error('Sign in first.'));
+        host = String(host || '').toLowerCase();
+        if (['cloudflare', 'vercel', 'other'].indexOf(host) < 0) {
+          return Promise.reject(new Error('Pick where you will host it: Cloudflare, Vercel, or other.'));
+        }
+        var l = read(K.listings).filter(function (x) { return x.id === listingId; })[0];
+        if (!l) return Promise.reject(new Error('Listing not found.'));
+        var owns = l.seller_id === me || read(K.purchases).some(function (p) {
+          return p.listing_id === listingId && p.buyer_id === me && p.status === 'complete';
+        });
+        if (!owns) {
+          return Promise.reject(new Error('Buy this tool first — the walkthrough is for owners.'));
+        }
+        var hostLabel = host === 'cloudflare' ? 'Cloudflare Pages'
+          : host === 'vercel' ? 'Vercel' : 'your own host';
+        var steps = [
+          'Clone the repository you unlocked on this page.',
+          'Read the seller\'s setup notes below before changing anything.',
+          'Copy any example env file to a local secret file — do not put keys on Forkable.',
+          host === 'cloudflare'
+            ? 'From the project folder: npx wrangler pages deploy . (log in with wrangler first).'
+            : host === 'vercel'
+              ? 'From the project folder: npx vercel (or import the repo in the Vercel dashboard).'
+              : 'Upload the built (or static) files to the host you already use.',
+          'Open the public URL and confirm the same flow you tried in the demo.'
+        ];
+        if (l.setup_instructions) {
+          steps.push('Follow any extra steps the seller wrote in Setup & deploy.');
+        }
+        return Promise.resolve({
+          ok: true,
+          cached: false,
+          host: host,
+          guide: {
+            summary: (l.title || 'This tool') + ' deploys to ' + hostLabel +
+              '. You already have the repo. Keys stay in your host dashboard, not here.',
+            accounts: host === 'other' ? [] : [hostLabel],
+            env_vars: [],
+            steps: steps,
+            warnings: 'Local mode cannot call Claude. This is a generic walkthrough — the live site writes one from the listing.'
+          }
+        });
+      },
+
       /* ---- changelog ---- */
 
       listUpdates: function (listingId) {
@@ -669,7 +798,7 @@
         return Promise.resolve(rows.map(decorate));
       },
 
-      /* ---- demo health ---- */
+      /* ---- demo health + trial gate ---- */
 
       checkDemo: function (url) {
         // No server here, so this is the honest answer rather than a fake pass.
@@ -677,6 +806,53 @@
           ok: null,
           error: 'Demo testing needs the live backend (it runs server-side). ' +
                  'Open the URL yourself to confirm it works.'
+        });
+      },
+
+      /* Mirrors listing_demo_url(): seller or completed buyer only. */
+      demoUrl: function (id) {
+        var l = read(K.listings).filter(function (x) { return x.id === id; })[0];
+        if (!l || !canSeeDemo(l)) return Promise.resolve(null);
+        return Promise.resolve(l.demo_url || null);
+      },
+
+      /* Local mirror of POST /api/demo-session. Returns a launch_url pointing at
+       * the demo itself (no Pages Function in pure local mode). The /demos/*
+       * hard gate only applies when Functions are serving the site. */
+      startDemoSession: function (opts) {
+        opts = opts || {};
+        var demoKey = opts.featuredId
+          ? ('featured:' + opts.featuredId)
+          : opts.listingId;
+        if (!demoKey) {
+          return Promise.reject(new Error('listing_id or featured_id is required.'));
+        }
+
+        var target = resolveLocalDemoTarget(opts);
+        if (!target) return Promise.reject(new Error('This listing has no demo.'));
+
+        var unlimited = false;
+        if (opts.listingId) {
+          var listing = read(K.listings).filter(function (l) { return l.id === opts.listingId; })[0];
+          if (listing && canSeeDemo(listing)) unlimited = true;
+        }
+
+        var claim = claimLocalDemoSession(demoKey, unlimited);
+        if (!claim.allowed) {
+          return Promise.reject(new Error(
+            "Today's free trial for this tool is used up. Buy to keep using it, or come back tomorrow."
+          ));
+        }
+
+        var href = target;
+        if (href.indexOf('://') < 0 && href.charAt(0) !== '/') href = '/' + href;
+
+        return Promise.resolve({
+          ok: true,
+          expires_at: claim.expires_at,
+          unlimited: !!claim.unlimited,
+          launch_url: href,
+          session_id: claim.session_id
         });
       },
 
@@ -770,6 +946,54 @@
       if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s));
       else localStorage.removeItem(SESSION_KEY);
     }
+
+    function jwtExpMs(accessToken) {
+      try {
+        var part = String(accessToken || '').split('.')[1];
+        if (!part) return 0;
+        var b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+        while (b64.length % 4) b64 += '=';
+        var payload = JSON.parse(atob(b64));
+        return payload.exp ? payload.exp * 1000 : 0;
+      } catch (e) { return 0; }
+    }
+
+    var refreshInFlight = null;
+    function ensureSession() {
+      var s = session();
+      if (!s || !s.refresh_token) return Promise.resolve(s);
+      var exp = s.expires_at ? Number(s.expires_at) * (Number(s.expires_at) < 1e12 ? 1000 : 1)
+        : jwtExpMs(s.access_token);
+      // Refresh one minute early so a long listing form doesn't save on a dead JWT.
+      if (exp && Date.now() < exp - 60000) return Promise.resolve(s);
+      if (refreshInFlight) return refreshInFlight;
+      refreshInFlight = fetch(base + '/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST',
+        headers: {
+          'apikey': anon,
+          'Authorization': 'Bearer ' + anon,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ refresh_token: s.refresh_token })
+      }).then(function (res) {
+        return res.json().catch(function () { return null; }).then(function (json) {
+          if (!res.ok || !json || !json.access_token) {
+            setSession(null);
+            throw new Error('Your session expired. Sign in again, then save.');
+          }
+          setSession(json);
+          return json;
+        });
+      }).then(function (next) {
+        refreshInFlight = null;
+        return next;
+      }, function (err) {
+        refreshInFlight = null;
+        throw err;
+      });
+      return refreshInFlight;
+    }
+
     function token() { var s = session(); return (s && s.access_token) || anon; }
 
     function headers(extra) {
@@ -780,20 +1004,34 @@
       }, extra || {});
     }
 
+    function failBody(json, status) {
+      var m = (json && (json.msg || json.message || json.error_description || json.error)) ||
+              ('Request failed (' + status + ')');
+      if (/jwt|expired|PGRST301/i.test(String(m) + (json && json.code || ''))) {
+        return 'Your session expired. Sign in again, then save.';
+      }
+      if (/42501|permission denied/i.test(String(m) + (json && json.code || ''))) {
+        return 'Could not save the listing (missing permission). Sign out, sign in, and try again.';
+      }
+      return m;
+    }
+
     function req(path, opts) {
       opts = opts || {};
-      return fetch(base + path, {
-        method: opts.method || 'GET',
-        headers: headers(opts.headers),
-        body: opts.body ? JSON.stringify(opts.body) : undefined
+      return ensureSession().then(function () {
+        return fetch(base + path, {
+          method: opts.method || 'GET',
+          headers: headers(opts.headers),
+          body: opts.body ? JSON.stringify(opts.body) : undefined
+        });
       }).then(function (res) {
         if (res.status === 204) return null;
-        return res.json().catch(function () { return null; }).then(function (json) {
-          if (!res.ok) {
-            var m = (json && (json.msg || json.message || json.error_description || json.error)) ||
-                    ('Request failed (' + res.status + ')');
-            throw new Error(m);
+        return res.text().then(function (text) {
+          var json = null;
+          if (text) {
+            try { json = JSON.parse(text); } catch (e) { json = null; }
           }
+          if (!res.ok) throw new Error(failBody(json, res.status));
           return json;
         });
       });
@@ -937,7 +1175,7 @@
       },
 
       getListing: function (id) {
-        return rest('/listings_with_seller?select=*&id=eq.' + id)
+        return rest('/listings_with_seller?select=*&id=eq.' + encodeURIComponent(id))
           .then(function (r) { return (r && r[0]) || null; });
       },
 
@@ -949,22 +1187,37 @@
         }).catch(function () { return null; });
       },
 
+      /* Same pattern as repoUrl — demo_url is column-revoked for everyone else. */
+      demoUrl: function (id) {
+        return req('/rest/v1/rpc/listing_demo_url', {
+          method: 'POST', body: { p_listing: id }
+        }).catch(function () { return null; });
+      },
+
+      startDemoSession: function (opts) {
+        opts = opts || {};
+        var body = {};
+        if (opts.featuredId) body.featured_id = opts.featuredId;
+        else if (opts.listingId) body.listing_id = opts.listingId;
+        else return Promise.reject(new Error('listing_id or featured_id is required.'));
+        return this.api('/api/demo-session', { method: 'POST', body: body });
+      },
+
       createListing: function (data) {
         var u = this.currentUser();
+        // return=minimal: repo_url and demo_url are not SELECTable, so RETURNING *
+        // (representation) fails with permission denied even when the insert worked.
         return rest('/listings', {
           method: 'POST',
           body: Object.assign({ seller_id: u.id }, data),
-          headers: { 'Prefer': 'return=representation' }
-        }).then(function (r) { return r && r[0]; });
+          headers: { 'Prefer': 'return=minimal' }
+        }).then(function () { return { ok: true }; });
       },
 
       updateListing: function (id, patch) {
-        return rest('/listings?id=eq.' + id, {
-          method: 'PATCH', body: patch, headers: { 'Prefer': 'return=representation' }
-        }).then(function (r) {
-          if (!r || !r.length) throw new Error('Listing not found, or not yours.');
-          return r[0];
-        });
+        return rest('/listings?id=eq.' + encodeURIComponent(id), {
+          method: 'PATCH', body: patch, headers: { 'Prefer': 'return=minimal' }
+        }).then(function () { return { ok: true }; });
       },
 
       deleteListing: function (id) {
@@ -988,14 +1241,16 @@
          they need the Stripe secret key, which must never reach the browser. */
       api: function (path, opts) {
         opts = opts || {};
-        var s = session();
-        return fetch(path, {
-          method: opts.method || 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + ((s && s.access_token) || '')
-          },
-          body: opts.body ? JSON.stringify(opts.body) : undefined
+        return ensureSession().then(function () {
+          var s = session();
+          return fetch(path, {
+            method: opts.method || 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + ((s && s.access_token) || '')
+            },
+            body: opts.body ? JSON.stringify(opts.body) : undefined
+          });
         }).then(function (res) {
           return res.json().catch(function () { return null; }).then(function (j) {
             if (!res.ok) throw new Error((j && j.error) || ('Request failed (' + res.status + ')'));
@@ -1011,8 +1266,17 @@
         });
       },
 
-      importRepo: function (repoUrl) {
-        return this.api('/api/import-repo', { method: 'POST', body: { repo_url: repoUrl } });
+      importRepo: function (repoUrl, githubToken) {
+        var body = { repo_url: repoUrl };
+        if (githubToken) body.github_token = githubToken;
+        return this.api('/api/import-repo', { method: 'POST', body: body });
+      },
+
+      deployGuide: function (listingId, host) {
+        return this.api('/api/deploy-guide', {
+          method: 'POST',
+          body: { listing_id: listingId, host: host }
+        });
       },
 
       /* ---- request board ---- */
@@ -1163,6 +1427,15 @@
     return u ? u.href : '';
   }
 
+  /* Demo-session launch targets: only our /api/demo-launch path, or http(s).
+   * javascript: / data: from a local-mode listing must never reach href/src. */
+  function safeLaunch(raw) {
+    if (!raw) return '';
+    var s = String(raw).trim();
+    if (s.indexOf('/api/demo-launch?') === 0) return s;
+    return safeHref(s);
+  }
+
   /* Ours, not a seller's. Tested against the *resolved* pathname so that
    * "demos/../app.html" normalises to "/app.html" and fails, as it should. */
   function isFirstPartyDemo(u) {
@@ -1201,6 +1474,7 @@
 
   window.FKUrl = {
     safeUrl: safeUrl,
+    safeLaunch: safeLaunch,
     safeHref: safeHref,
     demoFrame: demoFrame,
     isFirstPartyDemo: isFirstPartyDemo,

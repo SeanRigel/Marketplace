@@ -136,6 +136,39 @@ await DB.signOut();
   await DB.signOut();
 }
 
+/* ---------------------------------------------- demo_url / has_demo
+ * SQL: demo_gate.sql — demo_url revoked like repo_url; has_demo is public.
+ * Infinite free use is stopped by the trial gate, not by hiding that a demo exists. */
+{
+  const anonView = await DB.getListing(live.id);
+  check('anon sees has_demo', !!anonView.has_demo, true);
+  check('anon cannot read demo_url', anonView.demo_url === undefined, true);
+
+  await DB.signIn('mallory@example.com', 'pw-mallory-123');
+  const otherView = await DB.getListing(live.id);
+  check('a signed-in non-buyer cannot read demo_url', otherView.demo_url === undefined, true);
+  await DB.signOut();
+
+  await DB.signIn('alice@example.com', 'pw-alice-123');
+  const sellerView = await DB.getListing(live.id);
+  check('the seller CAN read their own demo_url', !!sellerView.demo_url, true);
+  await DB.signOut();
+}
+
+/* ---------------------------------------------- demo trial claim (local)
+ * Mirrors claim_demo_session: one active trial; resume while unexpired. */
+{
+  const first = await DB.startDemoSession({ listingId: live.id });
+  ok('anon can start a demo trial', first && first.ok && first.launch_url);
+  const again = await DB.startDemoSession({ listingId: live.id });
+  ok('active trial can be resumed', again && again.session_id === first.session_id);
+
+  await DB.signIn('alice@example.com', 'pw-alice-123');
+  const sellerSession = await DB.startDemoSession({ listingId: live.id });
+  ok('seller trial is unlimited', sellerSession && sellerSession.unlimited === true);
+  await DB.signOut();
+}
+
 /* ---------------------------------------------- writes belong to the owner
  * SQL: "sellers update own listings" / "sellers delete own listings" */
 {
@@ -164,11 +197,23 @@ await DB.signOut();
 
   const bought = await DB.getListing(live.id);
   check('after buying, the buyer CAN read repo_url', !!bought.repo_url, true);
+  check('after buying, the buyer CAN read demo_url', !!bought.demo_url, true);
+  const buyerDemo = await DB.startDemoSession({ listingId: live.id });
+  ok('buyer demo session is unlimited', buyerDemo && buyerDemo.unlimited === true);
+  const walk = await DB.deployGuide(live.id, 'cloudflare');
+  ok('buyer can get a deploy walkthrough', walk && walk.guide && walk.guide.steps.length > 0);
+  await DB.signOut();
+  let denied = false;
+  try { await DB.deployGuide(live.id, 'cloudflare'); } catch (e) { denied = /sign in|buy this/i.test(e.message); }
+  await DB.signIn('mallory@example.com', 'pw-mallory-123');
+  try { await DB.deployGuide(live.id, 'cloudflare'); } catch (e) { denied = denied || /buy this/i.test(e.message); }
+  ok('non-buyer cannot get a deploy walkthrough', denied);
   await DB.signOut();
 
   // ...and nobody else gained anything by Bob's purchase.
   const anonAfter = await DB.getListing(live.id);
   check('anon still cannot read repo_url after someone else bought', anonAfter.repo_url === undefined, true);
+  check('anon still cannot read demo_url after someone else bought', anonAfter.demo_url === undefined, true);
 }
 
 /* ---------------------------------------------- purchases are private

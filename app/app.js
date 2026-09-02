@@ -13,6 +13,7 @@
   var DB = window.DB;
   var view = document.getElementById('view');
   var CATEGORY_LABELS = {
+    ai_agents: 'Agent teams', trading_bots: 'Trading bots',
     scheduling: 'Scheduling', dashboard: 'Dashboard', intake_form: 'Intake form',
     payroll: 'Payroll', ai_integration: 'AI integration', other: 'Other'
   };
@@ -49,37 +50,83 @@
 
   /* The demo panel on a listing page.
    *
-   * Every branch that refuses to embed is a security decision, not a styling
-   * one — see the URL safety notes in db.js. A seller can put anything in
-   * demo_url, so this never trusts it enough to build an href from the raw
-   * string; FKUrl hands back a vetted src or nothing. */
-  function demoBox(rawUrl) {
-    if (!rawUrl) {
+   * Durable demo URLs are not public (same class as repo_url). Visitors mint a
+   * timed daily trial via /api/demo-session; the iframe loads /api/demo-launch
+   * so the real URL never has to sit in the page. Sellers/buyers get unlimited.
+   *
+   * When the seller *can* see demo_url (edit entitlement), we still run it
+   * through FKUrl before any embed — scheme + same-origin rules still apply. */
+  function demoBox(listing) {
+    if (!listing || !(listing.has_demo || listing.demo_url)) {
       return '<div class="no-demo">No demo URL on this listing yet.<br>' +
         'A listing without a working demo will not pass review.</div>';
     }
 
-    var f = FKUrl.demoFrame(rawUrl);
-
-    if (!f.ok && f.reason === 'scheme') {
-      return '<div class="no-demo">This demo link isn\'t a valid web address.<br>' +
-        'Only http and https links can be shown here.</div>';
-    }
-
-    if (!f.ok && f.reason === 'same-origin') {
-      return '<div class="no-demo">This demo is hosted on the marketplace\'s own ' +
-        'domain, so it can\'t be embedded safely.<br>' +
-        'Host it on your own domain and update the listing.</div>';
-    }
-
-    return '<div class="chrome"><div class="lights"><i></i><i></i><i></i></div>' +
-        '<div class="addr">' + esc(f.src) + '</div>' +
-        '<span class="badge badge-live"><span class="dot"></span>live sandbox</span></div>' +
+    return '<div class="demo-gate" data-listing="' + esc(listing.id) + '">' +
+      '<div class="chrome"><div class="lights"><i></i><i></i><i></i></div>' +
+        '<div class="addr demo-gate-addr">live sandbox · free trial</div>' +
+        '<span class="badge badge-live"><span class="dot"></span>gated</span></div>' +
+      '<div class="demo-gate-body">' +
+        '<p class="demo-gate-copy">Try the full tool free for a short session once per day. ' +
+          'When the trial ends, buy to keep using it — or come back tomorrow.</p>' +
+        '<button type="button" class="btn btn-primary demo-start">Start free trial</button>' +
+        '<div class="demo-gate-msg hint" hidden></div>' +
+      '</div>' +
       '<iframe class="demo-frame" title="Live demo" referrerpolicy="no-referrer" ' +
-        'sandbox="' + esc(f.sandbox) + '" ' +
-        'src="' + esc(f.src) + '"></iframe>' +
-      '<div class="demo-note">Real running instance with demo data. ' +
-        '<a href="' + esc(f.src) + '" target="_blank" rel="noopener">Open in a new tab ↗</a></div>';
+        'sandbox="allow-scripts allow-forms allow-popups allow-downloads" ' +
+        'src="about:blank" hidden></iframe>' +
+      '<div class="demo-note demo-gate-note" hidden></div>' +
+    '</div>';
+  }
+
+  function bindDemoGate(root, listing) {
+    var gate = root.querySelector('.demo-gate[data-listing="' + listing.id + '"]');
+    if (!gate) return;
+    var btn = gate.querySelector('.demo-start');
+    var msg = gate.querySelector('.demo-gate-msg');
+    var frame = gate.querySelector('.demo-frame');
+    var note = gate.querySelector('.demo-gate-note');
+    var addr = gate.querySelector('.demo-gate-addr');
+    var body = gate.querySelector('.demo-gate-body');
+
+    function showErr(text) {
+      msg.hidden = false;
+      msg.textContent = text;
+      btn.disabled = false;
+      btn.textContent = 'Start free trial';
+    }
+
+    function mountSession(session) {
+      var launch = FKUrl.safeLaunch(session && session.launch_url);
+      if (!launch) {
+        showErr('The demo session did not return a safe link.');
+        return;
+      }
+      // Never allow-same-origin here. The iframe src is our origin
+      // (/api/demo-launch → /demos/...), so same-origin + scripts would let a
+      // demo read the buyer's login out of localStorage.
+      frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups allow-downloads');
+      frame.src = launch;
+      frame.hidden = false;
+      body.hidden = true;
+      addr.textContent = session.unlimited
+        ? 'live sandbox · unlocked'
+        : 'live sandbox · trial until ' + new Date(session.expires_at).toLocaleTimeString();
+      note.hidden = false;
+      note.innerHTML = (session.unlimited
+        ? 'Unlimited access (you own this tool or listed it). '
+        : 'Timed free trial — one session per day. ') +
+        '<a href="' + esc(launch) + '" target="_blank" rel="noopener">Open in a new tab ↗</a>';
+    }
+
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      btn.textContent = 'Starting…';
+      msg.hidden = true;
+      DB.startDemoSession({ listingId: listing.id }).then(mountSession).catch(function (e) {
+        showErr((e && e.message) || 'Could not start the trial.');
+      });
+    });
   }
 
   /* Stable hue per listing so generated covers look designed, not random. */
@@ -105,7 +152,7 @@
   function listingCard(l) {
     return '<a class="card" href="#/listing/' + esc(l.id) + '">' +
       '<div class="cover" style="--h:' + hue(l.id) + '">' +
-        (l.demo_url
+        (l.has_demo || l.demo_url
           ? (l.demo_status === 'error'
               ? '<span class="badge badge-danger cover-badge">Demo down</span>'
               : '<span class="badge badge-live cover-badge"><span class="dot"></span>Live demo</span>')
@@ -223,7 +270,7 @@
   }
 
   function demoBadge(l) {
-    if (!l.demo_url) return '';
+    if (!(l.has_demo || l.demo_url)) return '';
     if (l.demo_status === 'error') {
       return '<span class="badge badge-danger" title="Our health check could not reach this demo">Demo down</span>';
     }
@@ -272,7 +319,7 @@
     el('sort').value = browseState.sort;
 
     var cats = el('cats');
-    cats.innerHTML = ['', 'scheduling', 'dashboard', 'intake_form', 'payroll', 'ai_integration', 'other']
+    cats.innerHTML = [''].concat(DB.categories)
       .map(function (c) {
         return '<button data-c="' + c + '" aria-pressed="' + (browseState.category === c) + '">' +
           (c ? CATEGORY_LABELS[c] : 'All tools') + '</button>';
@@ -377,7 +424,7 @@
 
         '<div class="detail"><div>' +
           '<div class="demo-box">' +
-            demoBox(l.demo_url) +
+            demoBox(l) +
           '</div>' +
 
           (l.long_description ? '<div class="prose"><h2>What it is</h2>' +
@@ -450,6 +497,8 @@
               '<div class="hint">Click a tag to find other tools on the same stack.</div></div>' : '') +
           (l.repo_url ? '<div><label>Repository</label>' + repoLink(l.repo_url) + '</div>' : '') +
         '</div></div>';
+
+      bindDemoGate(view, l);
 
       // Changelog: seller sees an editor; a buyer sees which entries landed after
       // they bought, which is the whole reason they'd read it.
@@ -525,7 +574,17 @@
         setMsg(m, 'Starting checkout…');
 
         DB.startCheckout(l.id, chosenLicense).then(function (r) {
-          if (r && r.url) { location.href = r.url; return; }   // Stripe Checkout
+          if (r && r.url) {
+            var pay = null;
+            try { pay = new URL(r.url); } catch (err) { pay = null; }
+            if (pay && pay.protocol === 'https:' && /(^|\.)stripe\.com$/i.test(pay.hostname)) {
+              location.href = pay.href;
+              return;
+            }
+            btn.disabled = false;
+            setMsg(m, 'Checkout did not return a Stripe address.', 'err');
+            return;
+          }
           // Local mode books it immediately; there is no hosted page to visit.
           setMsg(m, 'Simulated purchase (local mode). Opening your purchases…', 'ok');
           setTimeout(function () { go('#/dashboard/buyer'); }, 700);
@@ -1131,7 +1190,7 @@
                   '<small>updated ' + new Date(l.updated_at).toLocaleDateString() + '</small></td>' +
                 '<td><span class="badge">' + esc(CATEGORY_LABELS[l.category] || l.category) + '</span></td>' +
                 '<td style="font-family:var(--mono)">' + money(l.price_cents) + '</td>' +
-                '<td>' + (l.demo_url
+                '<td>' + (l.has_demo || l.demo_url
                   ? '<span class="badge badge-live"><span class="dot"></span>Set</span>'
                   : '<span class="badge badge-danger">Missing</span>') + '</td>' +
                 '<td>' + statusPill(l.status) + '</td>' +
@@ -1183,12 +1242,20 @@
         (editing ? '' :
           '<div class="import-box">' +
             '<b>Start from a GitHub repo</b>' +
-            '<p>Paste a public repo URL and Claude drafts the listing from its README. ' +
-              'You edit everything before it saves.</p>' +
+            '<p>Keep the repo <em>private</em> — that\'s what you\'re selling. Paste the URL. ' +
+              'If it\'s private, paste a GitHub token too. We read the README once and ' +
+              '<strong>never save the token</strong>.</p>' +
             '<div class="row">' +
               '<input id="repo-url" placeholder="https://github.com/you/your-tool">' +
+            '</div>' +
+            '<div class="row" style="margin-top:8px">' +
+              '<input id="gh-token" type="password" autocomplete="off" ' +
+                'placeholder="GitHub token (private repos)">' +
               '<button type="button" class="btn btn-secondary" id="import-btn">Draft it</button>' +
             '</div>' +
+            '<div class="hint" style="margin-top:8px">GitHub → Settings → Developer settings → ' +
+              'Personal access tokens. Fine-grained: Contents read-only on that repo. ' +
+              'Classic: <code>repo</code> scope.</div>' +
             '<div class="msg" id="import-msg"></div>' +
           '</div>') +
 
@@ -1229,7 +1296,8 @@
 
           '<div class="field"><label for="repo">Repo URL</label>' +
             '<input id="repo" value="' + esc(l.repo_url) + '" placeholder="https://github.com/you/template">' +
-            '<div class="hint">Private. Buyers only see this after purchase.</div></div>' +
+            '<div class="hint">Keep this repo private. Buyers only see the URL after they pay. ' +
+              'A public GitHub link means anyone can clone it for free.</div></div>' +
 
           '<div class="field"><label for="tags">Tech stack tags</label>' +
             '<input id="tags" value="' + esc((l.tech_stack_tags || []).join(', ')) + '" placeholder="React, Supabase, Stripe">' +
@@ -1242,7 +1310,7 @@
           '<div class="field"><label for="setup">Setup instructions (markdown)</label>' +
             '<textarea id="setup" class="code" placeholder="Env vars, accounts to create, deploy commands.">' +
               esc(l.setup_instructions) + '</textarea>' +
-            '<div class="hint">Aim for under an hour from purchase to a working deployment.</div></div>' +
+            '<div class="hint" id="setup-hint">Aim for under an hour from purchase to a working deployment.</div></div>' +
 
           '<div class="field"><label for="status">Status</label><select id="status">' +
             DB.statuses.map(function (s) {
@@ -1285,7 +1353,7 @@
        * a working demo, and docs good enough to deploy from. The rest is coaching. */
       function qualityChecks() {
         var d = collect();
-        return [
+        var checks = [
           { ok: d.title.length >= 8, label: 'Title that says what it is', required: false },
           { ok: d.short_description.length >= 40, label: 'Short description (40+ chars)', required: false },
           { ok: d.long_description.length >= 120, label: 'Long description (120+ chars)', required: false },
@@ -1301,6 +1369,28 @@
           { ok: d.tech_stack_tags.length >= 2, label: 'At least 2 stack tags', required: false },
           { ok: d.price_cents > 0, label: 'A price', required: false }
         ];
+        if (d.category === 'ai_agents' || d.category === 'trading_bots') {
+          var setup = (d.setup_instructions || '').toLowerCase();
+          checks.push({
+            ok: /api|key|env|\.env|secret|token/.test(setup),
+            label: 'Setup names the API keys / env vars a buyer must set',
+            required: false
+          });
+        }
+        return checks;
+      }
+
+      function paintSetupHint() {
+        var hint = el('setup-hint');
+        if (!hint) return;
+        var cat = el('cat') && el('cat').value;
+        if (cat === 'trading_bots') {
+          hint.textContent = 'List exchange/model API keys as env vars. The live demo must use paper trading or fake data — never real money.';
+        } else if (cat === 'ai_agents') {
+          hint.textContent = 'Name every model/API key the team needs, and the one command to run the crew. Keys stay in the buyer\'s host, not here.';
+        } else {
+          hint.textContent = 'Aim for under an hour from purchase to a working deployment.';
+        }
       }
 
       function paintQuality() {
@@ -1324,6 +1414,8 @@
       ['title', 'short', 'long', 'demo', 'repo', 'tags', 'setup', 'price'].forEach(function (id) {
         el(id).addEventListener('input', paintQuality);
       });
+      el('cat').addEventListener('change', function () { paintSetupHint(); paintQuality(); });
+      paintSetupHint();
       paintQuality();
 
       var importBtn = el('import-btn');
@@ -1331,13 +1423,15 @@
         importBtn.onclick = function () {
           var msg = el('import-msg');
           var url = el('repo-url').value.trim();
+          var token = (el('gh-token') && el('gh-token').value.trim()) || '';
           if (!url) { setMsg(msg, 'Paste a GitHub repo URL first.', 'err'); return; }
 
           importBtn.disabled = true;
           setMsg(msg, 'Reading the repo and drafting…');
 
-          DB.importRepo(url).then(function (r) {
+          DB.importRepo(url, token).then(function (r) {
             importBtn.disabled = false;
+            if (el('gh-token')) el('gh-token').value = '';
             var d = r.draft || {};
             // Fill, don't overwrite: anything the seller already typed wins.
             if (!el('title').value) el('title').value = d.title || '';
@@ -1347,6 +1441,7 @@
             if (!el('repo').value) el('repo').value = d.repo_url || url;
             if (!el('tags').value) el('tags').value = (d.tech_stack_tags || []).join(', ');
             if (d.category) el('cat').value = d.category;
+            paintSetupHint();
             paintQuality();
 
             var note = 'Draft filled in — read it before saving.' +
@@ -1451,7 +1546,16 @@
             '<a class="btn btn-secondary" href="#/dashboard/seller">Back</a></div>';
           return;
         }
-        paint(l);
+        // demo_url / repo_url are column-revoked on the public view — pull them
+        // through the security-definer RPCs the same way buyers unlock the repo.
+        return Promise.all([
+          DB.demoUrl(id).catch(function () { return null; }),
+          DB.repoUrl(id).catch(function () { return null; })
+        ]).then(function (pair) {
+          if (pair[0]) l.demo_url = pair[0];
+          if (pair[1]) l.repo_url = pair[1];
+          paint(l);
+        });
       }).catch(function (e) { view.innerHTML = fail(e); });
     } else {
       paint(null);
@@ -1461,6 +1565,26 @@
   /* ------------------------------------------------------------- buyer dashboard */
   function daysLeft(iso) {
     return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+  }
+
+  function renderDeployGuide(g) {
+    if (!g) return '';
+    var html = '';
+    if (g.summary) html += '<p>' + esc(g.summary) + '</p>';
+    if (g.accounts && g.accounts.length) {
+      html += '<p><b>Accounts to create</b></p><ul>' +
+        g.accounts.map(function (a) { return '<li>' + esc(a) + '</li>'; }).join('') + '</ul>';
+    }
+    if (g.env_vars && g.env_vars.length) {
+      html += '<p><b>Env vars</b></p><ul>' +
+        g.env_vars.map(function (a) { return '<li>' + esc(a) + '</li>'; }).join('') + '</ul>';
+    }
+    if (g.steps && g.steps.length) {
+      html += '<p><b>Steps</b></p><ol>' +
+        g.steps.map(function (a) { return '<li>' + esc(a) + '</li>'; }).join('') + '</ol>';
+    }
+    if (g.warnings) html += '<p class="hint">' + esc(g.warnings) + '</p>';
+    return html;
   }
 
   function viewBuyer() {
@@ -1517,6 +1641,24 @@
                 (l && l.setup_instructions
                   ? '<div style="margin-top:16px"><label>Setup &amp; deploy</label>' +
                     '<div class="setup">' + esc(l.setup_instructions) + '</div></div>'
+                  : '') +
+
+                (p.status === 'complete' && l
+                  ? '<div class="deploy-guide" data-listing="' + esc(l.id) + '" style="margin-top:16px">' +
+                      '<label>AI deploy walkthrough</label>' +
+                      '<p class="hint">Picks a host, then writes steps from this listing. ' +
+                      'Your keys stay in your host — we never ask for them.</p>' +
+                      '<div class="row" style="gap:8px;margin-top:8px">' +
+                        '<select class="dg-host">' +
+                          '<option value="cloudflare">Cloudflare Pages</option>' +
+                          '<option value="vercel">Vercel</option>' +
+                          '<option value="other">I\'ll host it myself</option>' +
+                        '</select>' +
+                        '<button type="button" class="btn btn-secondary btn-sm dg-go">Explain how I deploy this</button>' +
+                      '</div>' +
+                      '<div class="msg dg-msg"></div>' +
+                      '<div class="dg-out" hidden></div>' +
+                    '</div>'
                   : '') +
               '</div>' +
 
@@ -1625,6 +1767,26 @@
           return;
         }
 
+        var dgGo = e.target.closest('.dg-go');
+        if (dgGo) {
+          var box = dgGo.closest('.deploy-guide');
+          var msg = box.querySelector('.dg-msg');
+          var out = box.querySelector('.dg-out');
+          var host = box.querySelector('.dg-host').value;
+          dgGo.disabled = true;
+          setMsg(msg, 'Writing the walkthrough…');
+          DB.deployGuide(box.dataset.listing, host).then(function (r) {
+            dgGo.disabled = false;
+            setMsg(msg, r.cached ? 'Using the saved walkthrough for this host.' : 'Here\'s your walkthrough.', 'ok');
+            out.hidden = false;
+            out.innerHTML = renderDeployGuide(r.guide);
+          }).catch(function (err) {
+            dgGo.disabled = false;
+            setMsg(msg, err.message, 'err');
+          });
+          return;
+        }
+
         var refund = e.target.closest('.refund-btn');
         if (!refund) return;
 
@@ -1726,7 +1888,7 @@
             ' · ' + (r.sales_count || 0) + ' sold' +
             (r.refund_count ? ' · ' + r.refund_count + ' refunded' : '') +
           '</div>' +
-          (r.demo_url ? '<div class="hint mono-sm">' + esc(r.demo_url) + '</div>' : '') +
+          (r.has_demo ? '<div class="hint">Has a demo (URL hidden from the queue — open the listing to trial it)</div>' : '') +
         '</div>' +
         '<div class="mod-actions">' +
           '<input type="text" class="mod-reason" placeholder="Reason (kept on record)" ' +

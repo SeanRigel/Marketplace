@@ -108,6 +108,10 @@ All of this is built, tested, and verified in a browser.
 - [x] `stripe_connect_id` + onboarding flags likewise *(fixed 2026-08-11)*
 - [x] Purchases have no client insert policy — only the webhook can mint one
 - [x] Automated demo health checking
+- [x] Timed daily demo trial gate — `demo_url` hidden like `repo_url`; one session
+      per visitor per listing per day; `/demos/*` blocked without a session cookie;
+      sellers and completed buyers unlimited (`supabase/demo_gate.sql` +
+      `/api/demo-session` + `/api/demo-launch`)
 - [x] `preflight.mjs` checks for the security regressions specifically
 
 **Extras**
@@ -269,14 +273,32 @@ have to trust their code.
 Deliberately not built. The brief is explicit and it's the right call — these should be
 designed against what real sellers actually do, not guessed at now.
 
-- [ ] **Fork-and-deploy**: `deploy.config.json` manifest + guided setup wizard
+- [x] **Post-purchase AI deploy walkthrough** (slice): Purchases page → pick
+      Cloudflare / Vercel / other → `/api/deploy-guide` writes steps from the
+      listing. Cached per listing+host. Spend-capped. Does not store buyer keys
+      and does not deploy for them. SQL: `supabase/deploy_guide.sql`.
+- [ ] **Fork-and-deploy** (the rest of the promise): today a buyer also still gets a
+      repo link plus free-text `setup_instructions`. The full product is a guided
+      path from purchase → running deploy:
+      1. Seller ships a `deploy.config.json` manifest (required env vars, accounts to
+         create, host targets, health-check URL) — machine-readable, not a wall of prose.
+      2. Buyer gets a step-by-step wizard on the Purchases page (and optionally on the
+         listing after unlock): create these accounts, paste these keys locally, deploy
+         here.
+      3. **AI-assisted setup prompts** on top of that — not a black box that holds the
+         buyer's secrets. The platform turns the manifest + the buyer's chosen host into
+         copy-paste prompts/commands they run in their own editor or terminal (e.g.
+         "wire my `.dev.vars` for Cloudflare Pages"). Deterministic wizard first; AI is
+         the assistant layer. Any AI call needs a spend cap (same scar as
+         `/api/import-repo`). Do not store buyer API keys on Forkable.
 - [ ] **Sandbox automation**: spin up per-buyer demo instances instead of shared ones
 - [ ] **Admin moderation UI**: only when hand-flipping rows gets annoying
 - [ ] Multi-currency — hardcoded USD today; revisit when a non-US seller shows up
 - [ ] Per-buyer refund limits — only if someone actually abuses self-service refunds
 
 **Read the request board before picking from this list.** People stating what they'd
-pay for is the best research you'll get.
+pay for is the best research you'll get — especially anything about getting stuck after
+purchase; that friction should steer the fork-and-deploy wizard, not guesswork.
 
 ---
 
