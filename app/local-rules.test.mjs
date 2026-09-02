@@ -198,6 +198,9 @@ await DB.signOut();
   const bought = await DB.getListing(live.id);
   check('after buying, the buyer CAN read repo_url', !!bought.repo_url, true);
   check('after buying, the buyer CAN read demo_url', !!bought.demo_url, true);
+  const bag = await DB.myPurchases();
+  check('purchases page listing includes repo_url',
+        !!(bag[0] && bag[0].listing && bag[0].listing.repo_url), true);
   const buyerDemo = await DB.startDemoSession({ listingId: live.id });
   ok('buyer demo session is unlimited', buyerDemo && buyerDemo.unlimited === true);
   const walk = await DB.deployGuide(live.id, 'cloudflare');
@@ -370,6 +373,8 @@ await DB.signOut();
   check('myProfile does not select *', /profiles\?select=\*/.test(SRC), false);
   check('createListing uses return=minimal',
         /createListing:[\s\S]*?Prefer': 'return=minimal'/.test(SRC), true);
+  ok('live purchases hydrate repo via RPC',
+     /purchases\?select=\*,listing:listings_with_seller\(\*\)[\s\S]{0,500}repoUrl/.test(SRC));
 }
 
 /* ---------------------------------------------- report */

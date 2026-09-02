@@ -1246,6 +1246,8 @@
   function viewListingForm(id) {
     if (needAuth()) return;
     var editing = !!id;
+    var secretsReady = !editing;
+    var secretsFailed = false;
 
     function paint(l) {
       l = l || { category: 'other', status: 'draft', tech_stack_tags: [], price_cents: 0 };
@@ -1257,6 +1259,10 @@
                            : 'Save as a draft, then submit for review when the demo works.') + '</p>' +
         '</div><div class="spacer"></div>' +
         '<a class="btn btn-quiet btn-sm" href="#/dashboard/seller">Back</a></div>' +
+        (secretsFailed
+          ? '<div class="notice warn"><b>Couldn\'t load the hidden demo/repo URLs.</b> ' +
+            'Refresh this page before saving — otherwise Save would wipe them.</div>'
+          : '') +
 
         (editing ? '' :
           '<div class="import-box">' +
@@ -1545,6 +1551,10 @@
             return;
           }
         }
+        if (editing && !secretsReady) {
+          setMsg(m, 'Could not load the hidden demo/repo URLs. Refresh, then save.', 'err');
+          return;
+        }
 
         btn.disabled = true;
         m.className = 'msg';
@@ -1581,13 +1591,19 @@
           return;
         }
         // demo_url / repo_url are column-revoked on the public view — pull them
-        // through the security-definer RPCs the same way buyers unlock the repo.
+        // through the security-definer RPCs. Do not treat an RPC failure as
+        // "empty" — saving empty would wipe the product URLs.
         return Promise.all([
-          DB.demoUrl(id).catch(function () { return null; }),
-          DB.repoUrl(id).catch(function () { return null; })
+          DB.demoUrl(id),
+          DB.repoUrl(id)
         ]).then(function (pair) {
-          if (pair[0]) l.demo_url = pair[0];
-          if (pair[1]) l.repo_url = pair[1];
+          l.demo_url = pair[0] || '';
+          l.repo_url = pair[1] || '';
+          secretsReady = true;
+          paint(l);
+        }).catch(function () {
+          secretsFailed = true;
+          secretsReady = false;
           paint(l);
         });
       }).catch(function (e) { view.innerHTML = fail(e); });

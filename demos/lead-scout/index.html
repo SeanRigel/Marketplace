@@ -309,6 +309,10 @@
 </div>
 
 <script>
+// Sandboxed trial iframes have an opaque origin — localStorage throws.
+function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} }
+
 // mail.ru first: overpass-api.de's abuse filter 406-blocks localhost origins, and other mirrors flake
 const SERVERS = [
   { url: 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', name: 'vk' },
@@ -351,7 +355,7 @@ function offer() {
   };
 }
 function saveOffer() {
-  localStorage.setItem('ls_offer', JSON.stringify({
+  lsSet('ls_offer', JSON.stringify({
     name: document.getElementById('o_name').value,
     contact: document.getElementById('o_contact').value,
     turn: document.getElementById('o_turn').value,
@@ -397,7 +401,7 @@ const OBCACHE = {};
 let leads = [];
 let lastPlace = '';
 let currentTab = 'all';
-let meta = JSON.parse(localStorage.getItem('ls_meta') || '{}');
+let meta = JSON.parse(lsGet('ls_meta') || '{}');
 
 const chipsEl = document.getElementById('chips');
 CATS.forEach(c => {
@@ -409,20 +413,20 @@ CATS.forEach(c => {
 });
 
 (function loadOffer() {
-  const o = JSON.parse(localStorage.getItem('ls_offer') || 'null');
+  const o = JSON.parse(lsGet('ls_offer') || 'null');
   if (o) {
     document.getElementById('o_name').value = o.name || '';
     document.getElementById('o_contact').value = o.contact || '';
     document.getElementById('o_turn').value = o.turn || '';
   }
-  document.getElementById('o_key').value = localStorage.getItem('ls_anthropic_key') || '';
-  document.getElementById('o_model').value = localStorage.getItem('ls_model') || 'claude-opus-4-8';
+  document.getElementById('o_key').value = lsGet('ls_anthropic_key') || '';
+  document.getElementById('o_model').value = lsGet('ls_model') || 'claude-opus-4-8';
 })();
-function saveKey() { localStorage.setItem('ls_anthropic_key', document.getElementById('o_key').value.trim()); }
-function saveModel() { localStorage.setItem('ls_model', document.getElementById('o_model').value); }
+function saveKey() { lsSet('ls_anthropic_key', document.getElementById('o_key').value.trim()); }
+function saveModel() { lsSet('ls_model', document.getElementById('o_model').value); }
 
 function leadKey(x) { return x.name + '|' + (+x.lat).toFixed(3) + ',' + (+x.lon).toFixed(3); }
-function saveMeta() { localStorage.setItem('ls_meta', JSON.stringify(meta)); }
+function saveMeta() { lsSet('ls_meta', JSON.stringify(meta)); }
 
 function setStatus(msg, err) {
   const s = document.getElementById('status');
@@ -529,7 +533,7 @@ function process(elements) {
   leads.sort((a, b) => rank[a.tier] - rank[b.tier] || a.name.localeCompare(b.name));
   window.totalScanned = all.length;
 
-  localStorage.setItem('ls_last', JSON.stringify({ when: Date.now(), place: lastPlace, total: all.length, leads }));
+  lsSet('ls_last', JSON.stringify({ when: Date.now(), place: lastPlace, total: all.length, leads }));
   setStatus(all.length ? '✅ Done — ' + leads.length + ' of ' + all.length + ' businesses have no website listed.'
                        : 'No named businesses found here — try a bigger radius or more categories.', !all.length);
   render();
@@ -673,9 +677,9 @@ function obCopy(i, btn) {
 
 // ---- Claude (Anthropic API, called directly from the browser) ----
 async function callClaude(opts) {
-  const key = (localStorage.getItem('ls_anthropic_key') || '').trim();
+  const key = (lsGet('ls_anthropic_key') || '').trim();
   if (!key) throw new Error('NO_KEY');
-  const model = localStorage.getItem('ls_model') || 'claude-opus-4-8';
+  const model = lsGet('ls_model') || 'claude-opus-4-8';
   const body = { model, max_tokens: opts.maxTokens || 1500, messages: opts.messages };
   if (opts.system) body.system = opts.system;
   if (opts.format) body.output_config = { format: opts.format };
@@ -824,7 +828,7 @@ function esc(s) { return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<'
 
 // Restore last scan so results survive closing the tab
 (function restore() {
-  const last = JSON.parse(localStorage.getItem('ls_last') || 'null');
+  const last = JSON.parse(lsGet('ls_last') || 'null');
   if (!last || !last.leads?.length) return;
   leads = last.leads;
   lastPlace = last.place;

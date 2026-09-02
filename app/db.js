@@ -407,6 +407,17 @@
         return Promise.resolve();
       },
 
+      repoUrl: function (id) {
+        var l = read(K.listings).filter(function (x) { return x.id === id; })[0];
+        if (!l || !canSeeRepo(l)) return Promise.resolve(null);
+        return Promise.resolve(l.repo_url || null);
+      },
+      demoUrl: function (id) {
+        var l = read(K.listings).filter(function (x) { return x.id === id; })[0];
+        if (!l || !canSeeDemo(l)) return Promise.resolve(null);
+        return Promise.resolve(l.demo_url || null);
+      },
+
       myPurchases: function () {
         var me = uid();
         if (!me) return Promise.resolve([]);
@@ -1189,23 +1200,39 @@
       },
 
       getListing: function (id) {
+        var self = this;
         return rest('/listings_with_seller?select=*&id=eq.' + encodeURIComponent(id))
-          .then(function (r) { return (r && r[0]) || null; });
+          .then(function (r) {
+            var l = (r && r[0]) || null;
+            if (!l || !self.currentUser()) return l;
+            // listings_with_seller has no repo_url/demo_url (column-revoked).
+            // Seller and completed buyer get them from the RPCs.
+            return Promise.all([
+              self.repoUrl(id).catch(function () { return null; }),
+              self.demoUrl(id).catch(function () { return null; })
+            ]).then(function (pair) {
+              if (pair[0]) l.repo_url = pair[0];
+              if (pair[1]) l.demo_url = pair[1];
+              return l;
+            });
+          });
       },
 
       /* repo_url is column-revoked, so it comes back through the security-definer
-         function rather than the table. Null means the caller has no claim to it. */
+         function rather than the table. Null means the caller has no claim to it.
+         A thrown error means the RPC failed — callers that must not wipe secrets
+         should not swallow that. */
       repoUrl: function (id) {
         return req('/rest/v1/rpc/listing_repo_url', {
           method: 'POST', body: { p_listing: id }
-        }).catch(function () { return null; });
+        });
       },
 
       /* Same pattern as repoUrl — demo_url is column-revoked for everyone else. */
       demoUrl: function (id) {
         return req('/rest/v1/rpc/listing_demo_url', {
           method: 'POST', body: { p_listing: id }
-        }).catch(function () { return null; });
+        });
       },
 
       startDemoSession: function (opts) {
@@ -1243,9 +1270,21 @@
 
       myPurchases: function () {
         var u = this.currentUser();
+        var self = this;
         if (!u) return Promise.resolve([]);
         return rest('/purchases?select=*,listing:listings_with_seller(*)&buyer_id=eq.' + u.id +
-                    '&order=created_at.desc');
+                    '&order=created_at.desc').then(function (rows) {
+          rows = rows || [];
+          return Promise.all(rows.map(function (p) {
+            var listingId = (p.listing && p.listing.id) || p.listing_id;
+            if (!listingId || p.status === 'refunded') return p;
+            if (!p.listing) p.listing = { id: listingId };
+            return self.repoUrl(listingId).then(function (url) {
+              if (url) p.listing.repo_url = url;
+              return p;
+            }).catch(function () { return p; });
+          }));
+        });
       },
 
       settings: function () {
